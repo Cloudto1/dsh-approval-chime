@@ -89,6 +89,10 @@ try {
     const closed = boot({
       scopeValue: { enabled: true, volume: 70, tone: `custom:${UPPER}`, custom: [{ id: UPPER, name: 'upper.wav' }] },
       fetch: async (url, init) => {
+        // rev-10: the bundle reads its per-session override table once at mount
+        // (lib/client.js:2733-2745). This probe is about the AUDIO route, so that
+        // read is answered locally and never counted in `closedSeen`.
+        if (String(url) === '/api/approval-chime/sessions') return { ok: true, status: 200, json: async () => ({ ok: true, revision: 0, sessions: {} }) };
         const response = await fetch(`http://127.0.0.1:${server.port}${url}`, init);
         closedSeen.push({ url, status: response.status });
         return response;
@@ -108,6 +112,8 @@ try {
     const lowerDoc = boot({
       scopeValue: { enabled: true, volume: 70, tone: `custom:${LOWER}`, custom: [{ id: LOWER, name: 'lower.wav' }] },
       fetch: async (url, init) => {
+        // rev-10 boot read — see the note above.
+        if (String(url) === '/api/approval-chime/sessions') return { ok: true, status: 200, json: async () => ({ ok: true, revision: 0, sessions: {} }) };
         const response = await fetch(`http://127.0.0.1:${server.port}${url}`, init);
         lowerSeen.push({ url, status: response.status, ok: response.ok });
         return response;

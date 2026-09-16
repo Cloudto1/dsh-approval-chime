@@ -38,6 +38,7 @@
 
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
@@ -48,7 +49,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = resolve(HERE, '..');
 const CLIENT_PATH = join(PLUGIN, 'lib', 'client.js');
 
-const HOST_ROOT = 'C:\\Users\\28779\\AppData\\Local\\npm-cache\\_npx\\1e7f6d9597241db0\\node_modules\\@deepseek-ai';
+const HOST_ROOT = join(homedir(), 'AppData', 'Local', 'npm-cache', '_npx', '1e7f6d9597241db0', 'node_modules', '@deepseek-ai');
 const HOST_FILES = {
   general: join(HOST_ROOT, 'dsh-client-ui-settings-general', 'lib', 'client.js'),
   models: join(HOST_ROOT, 'dsh-client-ui-settings-models', 'lib', 'client.js'),
@@ -567,11 +568,11 @@ report.group('0. the bytes under test are the shipped ones');
 report.note('file', CLIENT_PATH);
 report.note('bytes', CLIENT_BYTES);
 report.note('sha256', CLIENT_SHA256);
-report.same('lib/client.js byte count is what rev-7 claims', CLIENT_BYTES, 80889);
+report.same('lib/client.js byte count is what rev-11 claims', CLIENT_BYTES, 137971);
 report.same(
-  'lib/client.js sha256 is what rev-7 claims',
+  'lib/client.js sha256 is what rev-11 claims',
   CLIENT_SHA256,
-  '6B9C38CE738859C4D0007EE027B994353242D4C8C974B1E39A420CF48D54F5D1',
+  '36BDD86B4D09A96492FCD6819913A50117E17EB6017F07914E98955A02D6E9CB',
 );
 report.same('lib/client.js has no top-level import/export (it is a classic script)', /^import |^export /m.test(CLIENT_SOURCE), false);
 
@@ -594,9 +595,9 @@ const diagnostics = bundle2.sandbox.__DSH_APPROVAL_CHIME__;
 
 report.note('slots.inject calls', ctx2.log.slotInjects);
 report.note('slots.register entries', ctx2.log.registrations.map((row) => ({ name: row.entry.name, id: row.entry.id, key: row.entry.key, order: row.entry.order, locale: row.entry.locale })));
-report.same('exactly one slots.inject happened', ctx2.log.slotInjects.length, 1);
-report.same('the injected slot name', ctx2.log.slotInjects[0], SLOT);
-report.same('exactly one slots.register happened', ctx2.log.registrations.length, 1);
+report.same('exactly two slots.inject happened (rev-10 adds the session-header bell)', ctx2.log.slotInjects.length, 2);
+report.same('the injected slot names', JSON.stringify(ctx2.log.slotInjects), JSON.stringify([SLOT, 'conversation.session.header.actions']));
+report.same('exactly two slots.register happened (the section + the bell)', ctx2.log.registrations.length, 2);
 
 /**
  * Resolve one registration out of the stub ledger. The strict lookup is by slot name;
@@ -727,8 +728,8 @@ report.same('the page heading is an <h2> carrying 通知提醒', textOf(byType(t
 report.same('exactly one <h2> on the page', byType(tree, 'h2').length, 1);
 report.check('the intro line is present', text.includes('宿主向你申请权限时响一次'), text.slice(0, 90));
 report.check('the section carries the plugin data attribute for a browser probe', byType(tree, 'section')[0]?.props?.['data-plugin'] === 'dsh-approval-chime');
-report.same('the bundleRevision badge shows the rev-7 stamp', textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev')), diagnostics.revision);
-report.check('the revision stamp is the rev-7 one', /rev-7/.test(diagnostics.revision), diagnostics.revision);
+report.same('the bundleRevision badge shows the rev-11 stamp', textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev')), diagnostics.revision);
+report.check('the revision stamp is the rev-11 one', /rev-11/.test(diagnostics.revision), diagnostics.revision);
 
 const checkbox = inputsOf(tree, 'checkbox')[0];
 report.same('exactly one enable checkbox', inputsOf(tree, 'checkbox').length, 1);

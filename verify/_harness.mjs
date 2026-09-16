@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
+import { Readable } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 
@@ -149,12 +150,12 @@ export function createDocumentStub() {
     },
     head: { children: [], appendChild(child) { document.head.children.push(child); return child; } },
     /** Fire one gesture-ish event at the bound listeners (capture phase only). */
-    fire(type) {
+    fire(type, extra) {
       const set = listeners.get(type);
       if (!set) return 0;
       let count = 0;
       for (const handler of [...set]) {
-        handler({ type });
+        handler(extra === undefined ? { type } : { type, ...extra });
         count += 1;
       }
       return count;
@@ -177,6 +178,9 @@ export function createClientSandbox(options = {}) {
   context.window.__ModuleLoader__ = loader;
   const audio = createAudioContextStub(options.audio);
   if (options.audio !== false && options.audioUnsupported !== true) context.window.AudioContext = audio.AudioContext;
+  // The per-session table is fetched over HTTP (rev-10), so a test that wants a table
+  // installs the stub BEFORE apply() runs: that is when the bundle reads it.
+  if (typeof options.fetch === 'function') context.window.fetch = options.fetch;
   const requires = [];
   const react = createReactStub();
   const requireFn = (specifier) => {
@@ -249,7 +253,13 @@ export function createRenderer(react, Component, props) {
       react.useEffect = (callback) => {
         const slot = index;
         index += 1;
-        if (!effects.some((effect) => effect.slot === slot)) effects.push({ slot, callback });
+        // One entry per slot, holding the NEWEST callback — the way React re-runs an
+        // effect whose dependencies changed. Without that, an effect that only arms
+        // itself while a component is open (the popover's dismissal listeners) would
+        // stay frozen on its first, inert closure forever.
+        const existing = effects.find((effect) => effect.slot === slot);
+        if (existing === undefined) effects.push({ slot, callback });
+        else existing.callback = callback;
       };
       react.useRef = (initial) => {
         const slot = index;
@@ -394,6 +404,48 @@ export function createAudioContextStub(options = {}) {
   return { AudioContext: AudioContextStub, record };
 }
 
+/* --------------------------------------------------------- fake HTTP exchange */
+
+/**
+ * A response object that records the answer instead of sending it. `finished`
+ * resolves when the handler ends the response, so a deferred answer (the 413 path)
+ * can be awaited rather than assumed.
+ */
+export function createFakeResponse() {
+  const state = { status: 0, headers: null, body: null, ended: false };
+  let markFinished = () => {};
+  const finished = new Promise((resolve) => {
+    markFinished = resolve;
+  });
+  return {
+    state,
+    finished,
+    writeHead(status, headers) {
+      state.status = status;
+      state.headers = headers;
+    },
+    end(body) {
+      state.ended = true;
+      if (body !== undefined && body !== null) state.body = Buffer.isBuffer(body) ? body : Buffer.from(String(body));
+      markFinished();
+    },
+  };
+}
+
+/** One request stream carrying an optional body, shaped like `http.IncomingMessage`. */
+export function createFakeRequest({ method, url, headers = {}, body = null }) {
+  const stream = Readable.from(body === null ? [] : [body]);
+  stream.method = method;
+  stream.url = url;
+  stream.headers = headers;
+  return stream;
+}
+
+/** A response body parsed back from the fake response. */
+export function parsedBody(response) {
+  return response.state.body === null ? null : JSON.parse(response.state.body.toString('utf8'));
+}
+
 /* ------------------------------------------------------------------ fake ctx */
 
 /** The browser-side plugin context, stubbed down to the services this bundle uses. */
@@ -464,7 +516,7 @@ export function createClientCtx(options = {}) {
   };
 
   const ctx = {
-    baseUrl: options.baseUrl ?? 'file:///C:/Users/28779/.dsh/profiles/web/',
+    baseUrl: options.baseUrl ?? `file:///${join(homedir(), '.dsh', 'profiles', 'web').replace(/\\/g, '/')}/`,
     effect(callback, label) {
       const dispose = callback();
       state.effects.push({ label, dispose });

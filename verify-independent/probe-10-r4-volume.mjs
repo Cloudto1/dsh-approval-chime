@@ -13,7 +13,7 @@
  * `destination` — never by trusting the source text.
  */
 
-import { boot, entry, makeFetch, suite, settle, watchRejections } from './kit/rev4.mjs';
+import { boot, entry, makeFetch, suite, settle, watchRejections, trafficOf, onlyMountReadTraffic, mountReadShape } from './kit/rev4.mjs';
 
 const S = suite('probe-10 rev-4 volume / gate semantics (independent)');
 const rejections = watchRejections();
@@ -84,7 +84,7 @@ S.group('claim 6b — volume = 0 creates no node on either path');
   S.same('built-in preview: no node was built', nodes(builtIn.api), 0);
   S.same('built-in preview: counted as "volume 0"', builtIn.api.stats().suppressedSilent, 1);
   S.same('imported preview: no node was built', nodes(custom.api), 0);
-  S.same('imported preview: NOTHING was fetched', custom.fetchStub.calls.length, 0);
+  S.check('imported preview: no request beyond the mount-time sessions read', onlyMountReadTraffic(custom.fetchStub), trafficOf(custom.fetchStub));
   S.same('imported preview: counted as "volume 0"', custom.api.stats().suppressedSilent, 1);
   S.same('imported preview: no other suppressed counter moved', JSON.stringify([custom.api.stats().suppressedDisabled, custom.api.stats().suppressedFailed, custom.api.stats().suppressedUnsupported]), JSON.stringify([0, 0, 0]));
 
@@ -96,7 +96,7 @@ S.group('claim 6b — volume = 0 creates no node on either path');
   S.same('built-in approval at volume 0: no node', nodes(approvalBuiltIn.api), 0);
   S.same('imported approval at volume 0: no AudioContext at all', approvalCustom.api.recorder.contexts.length, 0);
   S.same('imported approval at volume 0: no node', nodes(approvalCustom.api), 0);
-  S.same('imported approval at volume 0: no fetch', approvalCustom.fetchStub.calls.length, 0);
+  S.check('imported approval at volume 0: no request beyond the mount-time sessions read', onlyMountReadTraffic(approvalCustom.fetchStub), trafficOf(approvalCustom.fetchStub));
   S.same('imported approval at volume 0: counted as silent', approvalCustom.api.stats().suppressedSilent, 1);
 }
 
@@ -109,7 +109,7 @@ S.group('claim 6c — enabled = false creates no node on either path');
   S.same('built-in preview while disabled: no node', nodes(builtIn.api), 0);
   S.same('imported preview while disabled: no context', custom.api.recorder.contexts.length, 0);
   S.same('imported preview while disabled: no node', nodes(custom.api), 0);
-  S.same('imported preview while disabled: no fetch', custom.fetchStub.calls.length, 0);
+  S.check('imported preview while disabled: no request beyond the mount-time sessions read', onlyMountReadTraffic(custom.fetchStub), trafficOf(custom.fetchStub));
   S.same('imported preview while disabled: the call reports "not played"', custom.accepted, false);
   S.same('rev-5 F3: the disabled preview IS now counted as a suppression', custom.api.stats().suppressedDisabled, 1);
   S.same('and the built-in preview is counted the same way', builtIn.api.stats().suppressedDisabled, 1);
@@ -120,7 +120,7 @@ S.group('claim 6c — enabled = false creates no node on either path');
   S.same('built-in approval while disabled: no context', approvalBuiltIn.api.recorder.contexts.length, 0);
   S.same('built-in approval while disabled: counted as disabled', approvalBuiltIn.api.stats().suppressedDisabled, 1);
   S.same('imported approval while disabled: no context', approvalCustom.api.recorder.contexts.length, 0);
-  S.same('imported approval while disabled: no fetch', approvalCustom.fetchStub.calls.length, 0);
+  S.check('imported approval while disabled: no request beyond the mount-time sessions read', onlyMountReadTraffic(approvalCustom.fetchStub), trafficOf(approvalCustom.fetchStub));
   S.same('imported approval while disabled: counted as disabled', approvalCustom.api.stats().suppressedDisabled, 1);
 }
 
@@ -129,7 +129,7 @@ S.group('adversarial — both switches off on the approval path');
   const both = drive(TONE_A, { volume: 0, enabled: false }, 'approval');
   await settle(10);
   S.same('the approval was seen', both.api.stats().approvalsSeen, 1);
-  S.same('no context, no node, no fetch', JSON.stringify([both.api.recorder.contexts.length, nodes(both.api), both.fetchStub.calls.length]), JSON.stringify([0, 0, 0]));
+  S.check('no context, no node, and no request beyond the mount-time sessions read', both.api.recorder.contexts.length === 0 && nodes(both.api) === 0 && onlyMountReadTraffic(both.fetchStub), JSON.stringify([both.api.recorder.contexts.length, nodes(both.api)]) + ' ' + trafficOf(both.fetchStub));
   S.same('the refusal is counted once, as "disabled" (disabled wins over volume 0)', JSON.stringify([both.api.stats().suppressedDisabled, both.api.stats().suppressedSilent]), JSON.stringify([1, 0]));
 }
 
@@ -169,9 +169,22 @@ S.group('measured — the PREVIEW path at volume 0 still constructs an AudioCont
   await settle(8);
   S.same('the AudioContext WAS constructed by the preview path', custom.api.recorder.contexts.length, 1);
   S.same('but no gain / buffer source was created with it', nodes(custom.api), 0);
-  S.same('and no fetch was made', custom.fetchStub.calls.length, 0);
+  S.check('and no request was made beyond the mount-time sessions read', onlyMountReadTraffic(custom.fetchStub), trafficOf(custom.fetchStub));
   S.same('the refusal is counted', custom.api.stats().suppressedSilent, 1);
-  S.note('rev-5 F2 wording', 'lib/client.js:618-621 scopes "no AudioContext is created" to `chime()` itself — true for the APPROVAL path (measured in group 6b). The 试听 path unlocks the context first on purpose (lib/client.js:776). Measured here: contexts=1, nodes=0, fetches=0.');
+  S.note('rev-5 F2 wording', '`chime()` scopes "no AudioContext is created" to itself — true for the APPROVAL path (measured in group 6b). The 试听 path goes through `playPreview()`, which calls `attemptUnlock()` first on purpose. Measured here: contexts=1, nodes=0, ' + trafficOf(custom.fetchStub) + ' — the mount-time sessions read is the only request (see the F-02 group at the end).');
+}
+
+/* ------------------------------------------------------------------ F-02 group */
+
+S.group('F-02 — the mount-time sessions read is asserted, not merely excluded from `calls`');
+{
+  const fresh = drive('chime', { volume: 70 }, 'preview');
+  await settle(4);
+  S.same('exactly one mount-time sessions read per boot', fresh.fetchStub.sessionReads.length, 1);
+  S.same('it is a GET of the sessions route', mountReadShape(fresh.fetchStub), JSON.stringify(['GET', '/api/approval-chime/sessions']));
+  S.same('and it never entered the audio/upload ledger', fresh.fetchStub.calls.filter((call) => call.url === '/api/approval-chime/sessions').length, 0);
+  S.same('a built-in preview still makes no audio/upload call', fresh.fetchStub.calls.length, 0);
+  S.note('why this group exists', 'until rev-11 `sessionReads` was collected by kit/rev4.mjs and asserted by nobody, so it was neither true nor false. `trafficOf()`/`onlyMountReadTraffic()` now make every "nothing was fetched" assertion state BOTH halves: no audio/upload call AND exactly the one mount-time read. The read is still in the ledger — it was not deleted to make anything green.');
 }
 
 S.group('instrument control — no unhandled rejection');

@@ -30,7 +30,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { existsSync, mkdtempSync, mkdirSync, openSync, readFileSync, closeSync, rmSync } from 'node:fs';
 import { open as fsOpen } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { suite } from './kit/rev4.mjs';
@@ -152,7 +152,7 @@ S.group('B — is the UA rule for ::picker(select) readable from the Edge instal
 
 S.group('C — what a real HTML parser does with the payload (domino)');
 {
-  const roots = [process.env.DSH_DOMINO_ROOT, 'C:/Users/28779/AppData/Local/npm-cache/_npx/1e7f6d9597241db0/node_modules/'].filter((root) => typeof root === 'string' && root.length > 0);
+  const roots = [process.env.DSH_DOMINO_ROOT, `${join(homedir(), 'AppData', 'Local', 'npm-cache', '_npx', '1e7f6d9597241db0', 'node_modules').replace(/\\/g, '/')}/`].filter((root) => typeof root === 'string' && root.length > 0);
   let domino = null;
   let loadedFrom = null;
   for (const root of roots) {

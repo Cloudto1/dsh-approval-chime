@@ -5,8 +5,145 @@
 > ⚠️ **哈希提醒**：`docs/验证报告.md` 与 t4 评审记录里锁定的实现哈希对应 **rev-1**。
 > rev-2/rev-3 是纯外观改动，**rev-4 是功能新增**，**rev-5 是两轮独立验证与需求审查后的修正**，
 > **rev-6 是 N3 收尾**，**rev-7 把设置入口从「插件」迁到独立的「通知提醒」分区**，
-> **rev-8 把「启用提示音」换成苹果式拨动开关**，**rev-9 按真机反馈把它改瘦、开启色统一成音量条的蓝**。
-> 每次改动后都复跑了全部 harness：现为 4 个文件 / 305 项断言全绿（56 + 155 + 20 + 74）。
+> **rev-8 把「启用提示音」换成苹果式拨动开关**，**rev-9 按真机反馈把它改瘦、开启色统一成音量条的蓝**，
+> **rev-10 加「按会话独立」（会话头部小铃铛 + 每会话音色/音量覆盖 + 各响各的）**，
+> **rev-11 修 rev-10 的应答乱序窗口（会话写入落定后重读一次表）**。
+> 每次改动后都复跑了全部 harness：现为 4 个文件 / **522 项断言全绿（124 + 302 + 22 + 74）**。
+
+## rev-11 · per-session chime, race fix（修 rev-10 的应答乱序窗口 / F-01）
+
+来源：rev-10 的需求符合性审查 **F-01（medium）** ——「同一会话连点两次、两次应答被反序投递时，本地表会与宿主文件相反，
+且**直到刷新页面都没有收敛路径**」。审查者实测：`verify-independent/_raw/r10-ind-probe-18-race-evidence.txt:7`（1200 轮 1 例：
+本地无记录而文件是 `{enabled:false}` → 铃铛显示"会响"而实际静音），构造式反证 `r10-ind-probe-18-r10-sessions.txt:150`
+（I2：迟到应答把已恢复的状态又打回去）。
+
+**机理（为什么"最后一个应答"不够）**：两次点击 = 两个 POST = 两条 socket，应答体被消费的顺序**不保证**等于宿主 `rename`
+的落地顺序；而每次应答都**无条件**覆盖本地表（rev-10 的 `writeSessionPatch`），所以本地表的终值取决于"哪个应答先被读完"。
+它还会驱动铃铛与该会话的响铃判断，而 `refreshSessions()` 只在挂载时调过一次 → 不一致会持续到刷新页面。
+**触发条件**：第二次点击落在"第一次 POST 未落地"的窗口内（审查者量到：本机每会话 POST 往返 median 3.33 ms、p99 6.81 ms；
+两次人手点击 ≥40 ms 打不中，能打中的是"主线程长任务阻塞后两个 click 同突发派发"）。
+**为什么不用 `revision >` 栅栏**：应答反序时，**新**表反而是骑在**后到**应答里、revision 更大，栅栏会接受旧表、跳过新表
+（probe-18 I2 已把这条写进注解）。
+
+- **修法（审查者 requiredFix 的选项②，只动 `lib/client.js` 的写入路径）**：新增 `sessionWrites.outstanding` 计数 ——
+  每次写入 +1；每个应答落定后在 `settleSessionWrites()` 里 −1；**当计数归零（整张表再没有在飞的写入）时，
+  重新 `refreshSessions()` 读一次宿主文件**，让本地表最终等于宿主文件。计数器属于整张表而不是单个 sessionId：
+  「最后一个应答不是最后一个写入」这件事跨会话同样会破坏同一张表。
+  写入返回的 promise 在"它是最后一个在飞写入"时会等到这次重读完成，所以 `await` 写完即已收敛。
+- **拒绝路径不丢信息（选项②与"失败回滚+错误行"必须同时成立）**：写入被宿主拒绝时仍然回滚到点击前的副本、
+  仍然把原因放进 `sessions.error`（popover 的错误行），而这次重读**只重读表、不覆盖该次写入的结论** ——
+  重读成功后把 `sessions.error` 恢复成那次写入的原因（`settleSessionWrites(preservedError)`）。
+- **一次点击只多一次 GET**：计数归零才重读，所以连点两次只重读一次（自测断言 `reads === 挂载 1 + 重读 1`）。
+- **自测（新增 20 条，`verify/client-half.test.mjs` §5i）**：一个"应答可被扣住、由测试决定投递顺序"的存储桩 ——
+  同一会话连点两次（`{enabled:false}` → `{enabled:null}`），**先放第二个应答、再放第一个**，然后断言：
+  迟到的旧应答**不能**在本地表里留下记录、铃铛仍跟随全局、本地表与桩里的存储**逐字段相等**、
+  只重读一次、无在飞写入、无错误行；另测"单次点击仍收敛"；另测"被拒写入仍解析为 `false` 且错误行不被重读抹掉"。
+  **这条自测在修复前的字节上会报红**（实测：临时短路重读逻辑后 5 条断言失败，其中
+  `the stale answer cannot leave a record behind` 正是 F-01 的现象；短路已还原，sha256 与修复版逐字节一致）。
+- **复核（真实 HTTP，1500 轮/路，本轮实跑）**：
+  - `node verify-independent/probe-18-r10-sessions.mjs --race-rounds=1500 --race-raw`
+    → `I1 measurement (raw passthrough fetch, 1500 rounds): client-vs-store disagreements = 0/1500`；
+    `I1b.one-POST-per-click` 绿（每轮仍是 `[mute, clear]`）。
+  - `node verify-independent/probe-18-r10-sessions.mjs --race-rounds=1500 --race-sidechannel`
+    → `I1 measurement (clone side channel, 1500 rounds): client-vs-store disagreements = 0/1500`。
+  - 修前的同一测量：raw 1200 轮 1 例（`_raw/r10-ind-probe-18-race-evidence.txt:7`）、sidechannel 1500 轮 1 例。
+  - 两路各有 **2 条 FAIL，都是"期望值过期"而非产品回归**，且都落在 t2 的探针里（builder 不改）：
+    ① `I2.the-late-answer-wins-locally`（`probe-18-r10-sessions.mjs:1510`）—— 旧期望
+    `midway === true && final === false` 编码的正是修复前的缺陷；修复后实测是 `midway=true, final=true`
+    （迟到应答不再回退，且与桩里的空存储一致），即验收要求的「I2 改成"迟到应答不再回退"」。
+    注意 `MUTATIONS` 里 `mute-ignored` 的 `expect` 列了这条 check id（`:649`），改名时需同步。
+    ② `H6.stats-and-revision`（`probe-18-r10-sessions.mjs:1557`）—— 硬编码 `labels.includes('rev-10')` → 需改 `'rev-11'`。
+    两路其余 **128 条断言全绿**（`assertions passed=128 failed=2`，总条数与修前 130 一致）。
+- **锚定字节（rev-11）**：`lib/client.js` **137971 B / sha256 36BDD86B4D09A96492FCD6819913A50117E17EB6017F07914E98955A02D6E9CB**
+  （rev-10 为 133812 B / 2078125F…）；**宿主半 `lib/index.js` 零改动** —— 46638 B / sha256
+  03778391E15163487BC0F26082A73CBA15FAAF44CDC2CF93B0C185D75FB0B938（与 rev-10 逐字节相同，已实测复核）。
+  自测文件：`verify/client-half.test.mjs` 65661 B / 4FDA92CD5AF9A3F1526F8F02FF7AC435D23216429701D279E7E893C70D30068E
+  （rev-10 为 58941 B / 818C9216…）、`verify/custom-audio.test.mjs` 19872 B / 8BE5C5EE…（仅版本戳一行）、
+  `verify/_harness.mjs` 24822 B / 18C2055A…、`verify/host-half.test.mjs` 29652 B / E33F9889…、
+  `verify/waterfall.test.mjs` 8888 B / 010811A5…（三者本轮未动）。
+- **自测计数（rev-11）**：**522 项全绿（124 + 302 + 22 + 74）**，四套 exit 0；client-half 由 282 → 302（新增 20 条，见上）。
+- **不做的事（边界）**：`verify-independent/**` 是 t2 的产物、不在 builder 的冻结范围（captain 明确划出），
+  所以 **I2 的期望值与 H6 的版本戳都由 verifier 更新**，本轮只在文档登记（见上「复核」段）。
+  审查者 F-02（`kit/rev4.mjs:254` 把挂载期那次 sessions 读取摘出 `calls` 后，`probe-10` 五处与 `probe-16:170`
+  的「没有任何请求」字面失真）同样是 verifier 领地，**本轮未改那些文件**，登记在此备办。
+- **未证实**：真机上"长任务阻塞后两个 click 同突发派发"的可达性仍无浏览器可测（审查者的上界：间隔 ≥5 ms 全部 0/400）。
+  本轮修的是**不一致的收敛性**：无论应答以什么顺序到达、宿主的两次 `rename` 以什么顺序落地，本地表都会重读成文件的样子。
+  README §9 H17 已按新行为改写。
+- **文档**：CHANGELOG（本条 + rev-10 条目加"已知缺陷 → rev-11 修复"）、README（版本戳 rev-11、§3.2、§7 诊断新增
+  `sessionWrites()`、§9 H17）、`docs/挂载与验收.md`（版本戳 rev-11、§10 的历史哈希标注为 rev-4 时点）。
+- **OBS-1 更正（审查者指出）**：rev-10 条目里"仅 5 处期望值更新"**不准确**：按 `git diff -U0 -- verify/` 逐行核对，
+  被改写的**断言行是 7 条**（2 条 rev 戳 + 1 条"等待的槽列表" + 4 条"数全部注册"改成按 `settings.section` 过滤，
+  其中 4 条收得更紧），另有 4 行非断言改动（`fire(type, extra)` 形参、2 个常量、import 增补）。该行已按实测数字改写。
+
+## rev-10 · per-session chime（按会话独立：小铃铛 + 覆盖 + 各响各的）
+
+> ⚠️ **已知缺陷 → rev-11 修复**：同一会话连点两次、两次应答被反序投递时，本地表会与宿主文件相反且**没有收敛路径**
+> （审查者 F-01，medium；实测证据见 rev-11 条目）。本条目保留为当时的记录 —— 下面的"写入=乐观更新、失败回滚"
+> 描述的就是 rev-10 的写入路径，rev-11 在其后补了"最后一个在飞写入落定 → 重读一次宿主文件"。
+
+需求（用户）：「② 每个会话可以单独设置提示音开关/音色/音量；③ 同时多个会话待审批时，每个会话各自响，
+不要合并成一声」。选定的语义是 **①A**：会话覆盖只可能比全局**更安静**，不做「全局关时给单个会话强制打开」；
+覆盖存**插件自己的文件**（不进设置文档、不进浏览器存储）。
+
+- **会话头部小铃铛**（`lib/client.js`）：`ctx.slots.inject('conversation.session.header.actions')` +
+  `register({name, id:'approval-chime', order:30, locale:NS})`。该槽是 `list`/`scope:'session'`
+  （`dsh-cordis-client-runner/lib/client.js:3102-3157`），官方占用者实测 order = `agent-preset` -10
+  （`dsh-client-ui-agent-preset/lib/client.js:264-270`）、`schedule-catalog` 10（`dsh-client-ui-schedule/lib/client.js:293-298`）、
+  `job-list` 20（`dsh-client-ui-jobs/lib/client.js:266-271`），因此 **30** 既有空位、又不顶替任何人（id 自用）。
+  组件只读 `props.sessionId`（官方占用者同样如此：`dsh-client-ui-jobs/lib/client.js:117`）。
+- **两态图标 + 双语提示**：内联 SVG —— 开=实心铃铛（2 条 path），关=同一铃铛 + 一条斜杠（`.dacSlash`）；
+  `title` 与 `aria-label` 取同一串**同时含中英**的文案（`本会话审批提示音：开 · Approval chime for this session: on`），
+  刻意不走 `props.t`（那只给一种语言）。点击=切换：会响 → 写 `enabled:false`；被静音 → 写 `enabled:null`（清除覆盖、回跟随全局）。
+- **caret popover（自绘，只有 react）**：音色（跟随全局 / 导入的音色 / 风铃 / 铃铛 / 蜂鸣）、
+  音量（「跟随全局音量」勾选=清除覆盖，取消后 0..100 滑杆即该会话音量）、**恢复跟随全局**；
+  `position:fixed` + `getBoundingClientRect` 自定位（视口底部向上翻、水平收进视口）、外部 `pointerdown` 与 `Escape` 关闭；
+  写入**乐观更新**，宿主拒绝则回滚并把错误行显示在 popover 里。（平台自带的 `useDismissOnOutsidePointer` 在
+  `dsh-client-ui-primitives`，不在可 require 的种子里，故自行实现。）
+- **有效值**：`enabled/volume/tone = 会话覆盖 ?? 全局`（逐字段）。全局关 → 所有**未覆盖**会话静默；
+  会话覆盖的 `custom:<uuid>` 若已不在名册里 → **回退全局音色**（并在 popover 说明），不报错、不静音。
+- **各响各的**：同一批快照里 N 个可响会话各响一次，按快照顺序、相邻 **180 ms**（`BATCH_GAP_MS`；
+  旧实现是「一批只响一声」）。被本会话静音的**不响**并计入新计数 `suppressedSession`
+  （全局关导致的静默仍计 `suppressedDisabled`），设置页抑制行新增「因本会话提示音关闭而静音 ×N」。
+- **存储（宿主半）**：`$DSH_HOME|~/.dsh` 下 `approval-chime/sessions.json`，形状
+  `{version:1, sessions:{<sessionId>:{enabled?,volume?,tone?,updatedAt}}}`；目录递归创建；
+  **原子写**=同目录临时文件（`.sessions.<pid>.<uuid>.tmp`）+ `rename()`（失败清理临时文件并回 500）；
+  上限 **200** 条、按 `updatedAt` 淘汰最旧；空覆盖不落盘；缺失/损坏/非对象 → **空表 + 告警**，绝不抛错。
+  home 规则按宿主 `@deepseek-ai/dsh-home-paths/lib/index.js:73-76` 重写（`$DSH_HOME` **去空白后非空**优先，否则 `homedir()/.dsh`；
+  纯空白视为未设置）——**不 import 该包**（`link:` 插件解析不到裸模块，§B.6 的历史教训）。
+- **两个 HTTP 端点（同一条 prefix 路由，两个方法）**：`GET /api/approval-chime/sessions` →
+  `{ok:true, revision:<n>, sessions:{…}}`；`POST`（体 `{sessionId, patch}`）→ 应用后回**同样结构**。
+  非法 `sessionId`（空/非字符串/超长 >200）、非法 `volume`（非 0..100 **整数**）、非法 `tone`（非 `chime|bell|beep|custom:<小写 uuid>`）、
+  未知 patch 字段 → **400 且不落盘**（先校验后写）；`/sessions/...` 下未知路径 **404**、其它方法 **405**、超大请求体 **413**。
+  沿用 `registerAudioRoutes` 的姿势：`webServer` 只可选注入，没有它就只是不注册路由（
+  **为什么不能注册成两条同路径路由**：`dsh-host-webserver/lib/index.js:176-183` 用 `(kind, path)` 做键，重复即抛）。
+- **零浏览器存储**：`localStorage`/`sessionStorage`/`indexedDB`/`caches.` 在 bundle 里一个都不出现（新增断言）。
+- **零回退**：设置页（开关/音量/音色/导入/试听/恢复默认/413/上限 50/空白名回退/`::picker(select)` 三行可视）
+  与音频路由、审批面板行为**逐项未动**（四套 harness 的既有断言一条未删；按新事实改写的**断言行 7 条**：
+  2 条 rev 戳、1 条「等待的槽列表」、4 条「数全部注册」改成按 `settings.section` 过滤——其中 4 条收得更紧，
+  另有 4 行非断言改动：`fire(type, extra)` 形参、2 个常量、import 增补。数字已按 `git diff -U0 -- verify/` 逐行核对，
+  rev-11 条目里的 OBS-1 记录了这次更正）。
+- **诊断面**：`window.__DSH_APPROVAL_CHIME__` 新增 `sessionSlot`/`sessionAction`/`batchGapMs`/`sessions()`/`sessionSettings(id)`/
+  `toggleSession(id)`/`refreshSessions()`，**既有键一个未删**（新增断言逐键核对）；`REVISION` = `rev-10 · per-session chime`。
+- **自测**：**56 → 124**（宿主半：路径规则/空表/合并与 null 清除/12 种非法补丁 400 且文件字节不变/413/404/405/HEAD/
+  上限淘汰 205→200/5 种损坏形状退化/损坏后写入修复/原子写与失败清理）、**155 → 282**（浏览器半：槽注册形态与 id/order、
+  铃铛两态 SVG 与中英提示、点击 POST 请求体、popover 内容与自定位翻转、Escape/外部点击关闭、拒绝写入回滚+错误行、
+  有效值真值表 × 全局开与关、缺失 custom 回退、4 条 pending(1 静音)→3 响且 ≥180 ms 间隔、逐会话音量与顺序、
+  `suppressedSession` 与设置页抑制行、诊断键核对、零浏览器存储）、**20 → 22**（瀑布零注册 + 两项槽计数）、**74**（不变，
+  仅版本戳与槽查找跟进）。**合计 502 项全绿，4 套 exit 0。**
+- 锚定字节：`lib/index.js` **46638 B / sha256 03778391E15163487BC0F26082A73CBA15FAAF44CDC2CF93B0C185D75FB0B938**
+  （rev-9 为 27592 B / 75188B4C…）、`lib/client.js` **133812 B / sha256 2078125FCADDDC3AF9CEADE6585A321BF65B79B91E64DB4D244133832FD7CBB4**
+  （rev-9 为 84171 B / 5051558C…）；自测文件：`verify/_harness.mjs` 24822 B / 18C2055A…、
+  `verify/host-half.test.mjs` 29652 B / E33F9889…、`verify/client-half.test.mjs` 58941 B / 818C9216…、
+  `verify/waterfall.test.mjs` 8888 B / 010811A5…、`verify/custom-audio.test.mjs` 19872 B / D4FF3077…。
+- **文档**：README（§3.2 新行为/存储路径/上限/有效值/端点/语义、§4 计数与覆盖面、§5 新验收信号、§6 触发改为逐会话、
+  §7 诊断接口、§8 自绘 popover、§9 新增 H14-H18）；`docs/契约调研.md` 新增 **§L**（会话头部槽 + 待审批表以 sessionId 为键 +
+  home 规则 + 覆盖文件自身的约束，全部带宿主 `文件:行号`）；`docs/挂载与验收.md` 新增 **§7.1**（9 步手工验收：
+  铃铛两态、静音一个会话、两个会话各响各的、每会话音色覆盖、存储位置、恢复跟随全局、零回退）。
+- ⚠️ **rev-10 改了两半**：新路由与新文件都在 `lib/index.js`，**必须重启 `dsh web`** 再刷新页面；
+  只刷新会出现「铃铛在、写入报错」（客户端半对上了旧宿主半，404）。
+- **未证实（照旧不写成通过）**：真机上的点击/悬浮观感与 popover 实际定位、`order:30` 的视觉落点
+  （本机 profile 未装 `agent-team`，其 order 无法实测）、真实浏览器里 `position:fixed` 是否被带 `transform` 的祖先裁剪、
+  同会话连续两次点击的应答乱序窗口（记录为 H17，未加请求序号）。这些都在沙箱里无法实测。
 
 ## rev-9 · slim switch（真机反馈：开关太胖 + 开启色改用音量条的蓝）
 

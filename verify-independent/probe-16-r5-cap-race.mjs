@@ -15,7 +15,7 @@
  *   6. cap enforcement + preview: the refused import must not make a sound or fetch a sample
  */
 
-import { boot, entry, uuid, optionRows, chooseFile, makeFile, makeFetch, suite, settle, findAll, allText } from './kit/rev4.mjs';
+import { boot, entry, uuid, optionRows, chooseFile, makeFile, makeFetch, suite, settle, findAll, allText, trafficOf, onlyMountReadTraffic, mountReadShape } from './kit/rev4.mjs';
 
 const S = suite('probe-16 rev-5 roster cap + write-time re-read (independent)');
 
@@ -167,7 +167,7 @@ S.group('6 — a refused import makes no sound and fetches nothing');
   await settle(8);
   S.same('previews did not move', api.stats().previews, before.previews);
   S.same('no audio node was built', api.recorder.gains.length + api.recorder.oscillators.length + api.recorder.bufferSources.length, 0);
-  S.same('no request of any kind was made', stub.calls.length, 0);
+  S.check('no request of any kind beyond the mount-time sessions read', onlyMountReadTraffic(stub), trafficOf(stub));
 }
 
 /* ------------------------------- 5b. TWO imports in flight (the real race) */
@@ -254,6 +254,17 @@ S.group('5c — removing a tone when `fetch` is missing must not throw');
   S.same('clicking it does not throw', threw, null);
   S.same('the roster entry is still removed from the document', api.scopeState.value.custom.length, 0);
   S.same('and the tone falls back to the built-in default', api.scopeState.value.tone, 'chime');
+}
+
+/* ------------------------------- F-02. the mount-time read is asserted, not just excluded */
+
+S.group('F-02 — the mount-time sessions read is asserted, not merely excluded from `calls`');
+{
+  const { stub } = harness({});
+  S.same('exactly one mount-time sessions read per boot', stub.sessionReads.length, 1);
+  S.same('it is a GET of the sessions route', mountReadShape(stub), JSON.stringify(['GET', '/api/approval-chime/sessions']));
+  S.same('and it never entered the audio/upload ledger', stub.calls.filter((call) => call.url === '/api/approval-chime/sessions').length, 0);
+  S.note('why this group exists', 'until rev-11 `sessionReads` was collected by kit/rev4.mjs and asserted by nobody, so it was neither true nor false. `trafficOf()`/`onlyMountReadTraffic()` now make every "no request of any kind" assertion state BOTH halves: no audio/upload call AND exactly the one mount-time read. The read is still in the ledger — it was not deleted to make anything green.');
 }
 
 S.done();

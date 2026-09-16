@@ -61,7 +61,18 @@ const harness = createClientCtx();
 contract.apply(harness.ctx);
 report.equal('no remote-event subscription exists after apply()', harness.state.remoteSubscriptions.length, 0);
 report.equal('the pending-interaction source is subscribed instead', harness.state.pendingListeners.size, 1);
-report.equal('the card is still registered (the feature works without the waterfall)', harness.state.slotRegistrations.length, 1);
+const registrations = harness.state.slotRegistrations;
+report.equal(
+  'the settings card is still registered (the feature works without the waterfall)',
+  registrations.filter((entry) => entry.options?.name === 'settings.section').length,
+  1,
+);
+report.equal(
+  'the rev-10 session bell is registered too',
+  registrations.filter((entry) => entry.options?.name === 'conversation.session.header.actions').length,
+  1,
+);
+report.equal('and nothing else was registered anywhere', registrations.length, 2);
 
 /* ------------------------------------------- 3. runtime, the Host's real cordis */
 

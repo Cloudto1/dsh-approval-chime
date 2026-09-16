@@ -636,7 +636,7 @@ export function makeCtx(options = {}) {
   const logger = (level) => (message) => log.logger.push(`${level}: ${String(message)}`);
 
   const ctx = {
-    baseUrl: 'file:///C:/Users/28779/.dsh/profiles/web/',
+    baseUrl: `file:///${join(homedir(), '.dsh', 'profiles', 'web').replace(/\\/g, '/')}/`,
     effect(callback, label) {
       log.effectLabels.push(label);
       const dispose = callback();

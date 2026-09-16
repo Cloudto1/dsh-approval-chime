@@ -22,6 +22,8 @@ export { suite, settle, watchRejections, allText, findAll, loadBundle, makeCtx, 
 
 export const PREFIX = 'custom:';
 export const AUDIO_ROUTE = '/api/approval-chime/audio';
+/** rev-10: the per-session override route the bundle reads once at mount. */
+export const SESSIONS_ROUTE = '/api/approval-chime/sessions';
 export const CUSTOM_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Deterministic UUID-shaped ids: `00000001-aaaa-4aaa-8aaa-bbbbbbbbbbbb`. */
@@ -203,6 +205,7 @@ export function makeSampleRecorder(options = {}) {
  */
 export function makeFetch(plan = {}) {
   const calls = [];
+  const sessionReads = [];
   const deferred = [];
   const responseLike = (status, spec) => ({
     ok: spec.ok === undefined ? status >= 200 && status < 300 : spec.ok,
@@ -239,6 +242,19 @@ export function makeFetch(plan = {}) {
   const fetchFn = (url, init) => {
     const method = String((init === undefined || init === null ? undefined : init.method) === undefined ? 'GET' : init.method).toUpperCase();
     const call = { url: String(url), method, init: init === undefined ? null : init };
+    // rev-10: the bundle now performs exactly ONE read of its per-session override
+    // table when it mounts (`GET /api/approval-chime/sessions`,
+    // lib/client.js:2733-2745 -> :1045-1058). Every probe on this kit is about the
+    // AUDIO and upload traffic, so that read is answered here from a fixed empty
+    // table and kept OUT of `calls`: "no request of any kind was made" and
+    // "`calls[0]` is the audio URL" keep meaning what they always meant. It is
+    // recorded on `sessionReads` instead, so the read is still visible.
+    // `probe-18-r10-sessions.mjs` asserts the read itself, against the real host,
+    // over real HTTP.
+    if (call.url === SESSIONS_ROUTE) {
+      sessionReads.push(call);
+      return Promise.resolve(responseLike(200, { json: { ok: true, revision: 0, sessions: {} } }));
+    }
     calls.push(call);
     if (method === 'POST') return build(typeof plan.post === 'function' ? plan.post(call) : plan.post);
     if (method === 'DELETE') return build(typeof plan.del === 'function' ? plan.del(call) : plan.del);
@@ -247,10 +263,36 @@ export function makeFetch(plan = {}) {
     return build(spec);
   };
   fetchFn.calls = calls;
+  fetchFn.sessionReads = sessionReads;
   fetchFn.deferred = deferred;
   fetchFn.audioCalls = () => calls.filter((call) => call.method === 'GET' && call.url.startsWith(AUDIO_ROUTE + '/'));
   fetchFn.uploadCalls = () => calls.filter((call) => call.method === 'POST');
   return fetchFn;
+}
+
+/**
+ * The whole traffic picture of one stub, as a display string.
+ *
+ * F-02 (rev-11 maintenance, reviewer's low finding): `makeFetch` answers the
+ * bundle's ONE mount-time `GET /api/approval-chime/sessions` itself and keeps it on
+ * `sessionReads` (see the note in {@link makeFetch}), so a bare
+ * `calls.length === 0` is only half a statement — "nothing was fetched" would be
+ * false as written. These two helpers replace that half-statement with the whole
+ * one: no audio/upload call AND exactly the one mount-time read, both asserted.
+ */
+export function trafficOf(stub) {
+  return JSON.stringify({ audioUploadCalls: stub.calls.length, mountSessionReads: stub.sessionReads.length });
+}
+
+/** True when the ONLY request the bundle made is its one mount-time sessions read. */
+export function onlyMountReadTraffic(stub) {
+  return stub.calls.length === 0 && stub.sessionReads.length === 1;
+}
+
+/** The mount-time read as `[method, url]`, for an exact assertion about it. */
+export function mountReadShape(stub) {
+  if (stub.sessionReads.length === 0) return null;
+  return JSON.stringify([stub.sessionReads[0].method, stub.sessionReads[0].url]);
 }
 
 /* ------------------------------------------------------------------- booting */

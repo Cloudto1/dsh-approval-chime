@@ -264,7 +264,7 @@ const harness = createClientCtx({
 contract.apply(harness.ctx);
 const diagnostics = sandbox.context.window.__DSH_APPROVAL_CHIME__;
 report.ok('the diagnostics surface is installed', diagnostics !== undefined && diagnostics !== null);
-report.ok('the revision names this build', String(diagnostics.revision).includes('rev-9'), String(diagnostics.revision));
+report.ok('the revision names this build', String(diagnostics.revision).includes('rev-11'), String(diagnostics.revision));
 report.deepEqual(
   'option order is imports (in order, deduplicated) then built-ins',
   diagnostics.toneOptions(),
@@ -276,7 +276,7 @@ report.deepEqual(
   [{ id: ID_A, name: 'first.mp3' }, { id: ID_B, name: 'second.wav' }, { id: ID_C, name: ID_C }],
 );
 
-const cardEntry = harness.state.slotRegistrations[0];
+const cardEntry = harness.state.slotRegistrations.find((entry) => entry.options?.name === 'settings.section');
 report.equal('the section registers on the settings.section slot (rev-7 move)', cardEntry?.options?.name, 'settings.section');
 report.equal('and keeps its own id and order', `${String(cardEntry?.options?.id)}@${String(cardEntry?.options?.order)}`, 'approval-chime@16');
 const driver = createRenderer(sandbox.react, cardEntry.component, {});
