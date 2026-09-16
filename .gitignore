@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# local deployment scratch: profile snapshots, backup copies, raw dumps
+deploy/_raw/
+deploy/_shadow/
+deploy/backup-*/
+
+# verification artifacts: raw console/test dumps are not source
+verify-independent/_raw/
+verify/_raw/
+
+# misc
+*.log
+.DS_Store
+Thumbs.db

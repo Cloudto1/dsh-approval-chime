@@ -1,0 +1,17 @@
+# dsh-approval-chime bundle patch.
+#
+# Inserts this package's own row into the profile's root entry list. A bundle's
+# patch layer is applied when the profile lists the bundle in
+# `dsh.profile.bundles` (dsh-app-boot reads `dsh.bundle.patch` from this
+# package's package.json), so this file is the ONLY place that inserts this id.
+#
+# Do NOT insert the same id again from the profile's own cordis.patch.yml:
+# every layer's patches are merged into one array and handed to the root group
+# in a single update, and a duplicate id throws
+# `duplicate loader entry id: dsh-approval-chime` — which breaks the boot.
+# To disable this plugin temporarily, patch by id instead:
+#   - id: dsh-approval-chime
+#     disabled: true
+- insert:
+    - id: dsh-approval-chime
+      name: dsh-approval-chime
