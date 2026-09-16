@@ -1,10 +1,10 @@
 # dependencies
 node_modules/
 
-# local deployment scratch: profile snapshots, backup copies, raw dumps
-deploy/_raw/
-deploy/_shadow/
-deploy/backup-*/
+# local deployment tooling + scratch, kept local and not published:
+# mount.mjs / precheck.mjs are machine-specific, expected-package.json
+# contains absolute local paths
+deploy/
 
 # verification artifacts: raw console/test dumps are not source
 verify-independent/_raw/
