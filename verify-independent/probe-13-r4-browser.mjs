@@ -201,7 +201,7 @@ S.group('D — recorded as UNPROVEN (not as pass)');
     "whether an unsupported browser's native popup honours `option{background-color/color}` (the claim in lib/client.js:966-970)",
   ];
   for (const item of unproven) S.note('unproven', item);
-  S.check('the probe does not claim any of the above as verified', true, 'see docs/rev4-浏览器半独立验证.md, the 未证实项 section');
+  S.check('the probe does not claim any of the above as verified', true, 'see docs/rev4-浏览器侧独立验证.md, the 未证实项 section');
 }
 
 S.done();

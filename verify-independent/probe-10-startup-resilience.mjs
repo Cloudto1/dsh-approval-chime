@@ -30,6 +30,13 @@ log.note(`node ${process.version} / ${process.platform}`);
 log.note(`lib/index.js sha256 ${sha256(join(PLUGIN_DIR, 'lib', 'index.js'))}`);
 
 const ROUTE = plugin.AUDIO_ROUTE;
+/**
+ * rev-10 rebaseline: a working webServer now receives TWO prefix routes — the audio
+ * route (lib/index.js:689, registered first) and the per-session override table
+ * (lib/index.js:1093, `plugin.SESSIONS_ROUTE`). Every shape below that reaches a
+ * working server therefore registers 2 routes, not the 1 the rev-1..rev-3 probe pinned.
+ */
+const EXPECTED_ROUTES = 2;
 const allShapes = [];
 
 function loggerInto(lines) {
@@ -159,7 +166,7 @@ shape(
     const routes = [];
     return { ctx: { logger: loggerInto(lines), effect: (callback) => callback(), get: () => workingServer(routes) }, routes };
   },
-  { routes: 1 },
+  { routes: EXPECTED_ROUTES },
 );
 
 log.section('3. ctx.get throws');
@@ -179,7 +186,7 @@ shape(
       routes,
     };
   },
-  { routes: 1 },
+  { routes: EXPECTED_ROUTES },
 );
 shape(
   'get throws, no inject, ctx.webServer present -> route registered',
@@ -190,7 +197,7 @@ shape(
       routes,
     };
   },
-  { routes: 1 },
+  { routes: EXPECTED_ROUTES },
 );
 shape(
   'get throws, no inject, no webServer -> warn only',
@@ -304,16 +311,19 @@ shape(
 
 log.section('6. the positive control and the deferred-effect caveat');
 const control = shape(
-  'a working webServer -> exactly one prefix route',
+  'a working webServer -> exactly two prefix routes (audio + per-session table)',
   (lines) => {
     const routes = [];
     return { ctx: { logger: loggerInto(lines), effect: (callback) => callback(), get: (name) => (name === 'webServer' ? workingServer(routes) : undefined) }, routes };
   },
-  { routes: 1 },
+  { routes: EXPECTED_ROUTES },
 );
 log.equal('the claimed path is the audio route', control.routes[0]?.path, ROUTE);
 log.equal('the claimed kind is prefix', control.routes[0]?.kind, 'prefix');
 log.equal('the handler is callable', typeof control.routes[0]?.handler, 'function');
+log.equal('the second claimed path is the per-session table (rev-10)', control.routes[1]?.path, plugin.SESSIONS_ROUTE);
+log.equal('the second route is a prefix route too', control.routes[1]?.kind, 'prefix');
+log.equal('the second handler is callable', typeof control.routes[1]?.handler, 'function');
 const deferred = shape(
   'effect stores the callback and never runs it',
   (lines) => {

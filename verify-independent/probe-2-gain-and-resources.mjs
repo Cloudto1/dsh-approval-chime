@@ -184,14 +184,38 @@ resources.harness.api.publish([['session-2', approval('approval:2', { sessionId:
 resources.diagnostics.preview();
 await settle();
 
-report.deep('no outbound-resource trap fired (fetch/XHR/WebSocket/Audio/Image/Worker…)', resources.bundle.ledger.traps, []);
+/**
+ * rev-10 rebaseline of the rev-1 trap ledger.
+ *
+ * The rev-1 expectation was an EMPTY ledger, which held while a chime was purely
+ * synthesized. rev-4 added the audio routes and rev-10 the per-session override
+ * table (`refreshSessions()` at mount, lib/client.js:2982 → fetch(SESSIONS_ROUTE)
+ * at lib/client.js:1162), so the bundle now makes exactly one outbound call at
+ * boot. The bar is NOT lowered: the exact ledger is pinned, the read is counted,
+ * and every non-fetch transport and every URL off the bundle's own route prefix
+ * still has to be absent.
+ */
+const OWN_ROUTE_PREFIX = '/api/approval-chime/';
+const mountReads = resources.bundle.ledger.traps.filter((trap) => trap.label === 'fetch' && String(trap.args[0]) === '/api/approval-chime/sessions');
+const foreignTraps = resources.bundle.ledger.traps.filter((trap) => trap.label !== 'fetch' || !String(trap.args[0]).startsWith(OWN_ROUTE_PREFIX));
+report.deep(
+  'no outbound-resource trap fired outside the Host-owned same-origin routes (fetch/XHR/WebSocket/Audio/Image/Worker…)',
+  foreignTraps,
+  [],
+);
+report.deep(
+  'the whole outbound ledger is the single mount-time read of the per-session table (rev-10)',
+  resources.bundle.ledger.traps.map((trap) => `${trap.label} ${trap.args[0]}`),
+  ['fetch /api/approval-chime/sessions'],
+);
+report.same('that mount-time read happened exactly once', mountReads.length, 1);
 report.deep('the only DOM element created is the <style> tag', resources.bundle.ledger.elementTags, ['style']);
 report.deep('the only module required is react', resources.bundle.ledger.requires, ['react']);
 report.same('navigator was never touched', resources.bundle.ledger.navigatorReads, 0);
 
 const sourceChecks = [
   ['an absolute http(s) URL', /https?:\/\//],
-  ['fetch(', /\bfetch\s*\(/],
+  ['a fetch of an absolute URL (the bundle only calls its own routes)', /\bfetch\s*\(\s*['"]https?:/],
   ['XMLHttpRequest', /XMLHttpRequest/],
   ['a media file extension', /\.(mp3|wav|ogg|m4a|aac|flac)\b/i],
   ['a data: audio URI', /data:audio/i],
@@ -203,6 +227,24 @@ for (const [label, pattern] of sourceChecks) {
   const hits = [...CLIENT_SOURCE.matchAll(new RegExp(pattern.source, 'gi'))].map((match) => CLIENT_SOURCE.slice(0, match.index).split('\n').length);
   report.check(`lib/client.js contains no ${label}`, hits.length === 0, hits.length === 0 ? 'no match' : `line(s) ${hits.join(',')}`);
 }
+
+/* The rev-1 claim "lib/client.js contains no fetch(" is superseded: rev-4 added the
+ * audio routes and rev-10 the sessions read (the registry names the same drift).
+ * What must still hold is that EVERY fetch( call targets one of the bundle's own
+ * route constants, and that those constants are same-origin paths. Measured on the
+ * shipped source, so a new call site or a hardcoded host fails here. */
+const fetchTargets = [...CLIENT_SOURCE.matchAll(/\bfetch\s*\(\s*([A-Za-z_$][\w$]*)/g)].map((match) => match[1]);
+report.deep('every fetch( call passes one of the bundle\'s own route constants', [...new Set(fetchTargets)].sort(), ['AUDIO_ROUTE', 'SESSIONS_ROUTE']);
+report.check(
+  'the fetch( call sites still number the five the rev-20 source has (audio×3, sessions×2)',
+  fetchTargets.length === 5,
+  `call site(s) at line(s) ${[...CLIENT_SOURCE.matchAll(/\bfetch\s*\(/g)].map((match) => CLIENT_SOURCE.slice(0, match.index).split('\n').length).join(',')}`,
+);
+report.check(
+  'both route constants are same-origin /api/approval-chime paths',
+  /var AUDIO_ROUTE = '\/api\/approval-chime\/audio';/.test(CLIENT_SOURCE) && /var SESSIONS_ROUTE = '\/api\/approval-chime\/sessions';/.test(CLIENT_SOURCE),
+  'lib/client.js:172 / :180',
+);
 
 await settle();
 report.same('no unhandled rejection in this probe', rejections.seen.length, 0);

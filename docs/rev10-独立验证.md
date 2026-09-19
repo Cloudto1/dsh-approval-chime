@@ -8,7 +8,7 @@
 - 全量回归：`verify-independent/run-r10.ps1` → 日志 `verify-independent/_raw/r10-*.txt`
 - 总体：**probe-18 = 130 断言 / 0 失败**（`r10-ind-probe-18-r10-sessions.txt:178`）；四套 harness 502 项全绿；回归探针集（run-r4…r10）除 probe-13 外全部 exit 0；8/8 变异体按声明精确报红；冻结路径 11 个文件前后逐行一致。
 - **未证实** 4 项（真实浏览器渲染/悬浮提示/popover 实际定位/真实 dsh web 端到端），见 §11。
-- **已复现缺陷 1 项**：铃铛快速连点两次后，本地表可以与宿主文件不一致（≈0.06%，非阻塞，见 §10）。
+- **已复现缺陷 1 项**：铃铛快速连点两次后，本地表可以与 DSH 文件不一致（≈0.06%，非阻塞，见 §10）。
 
 ---
 
@@ -19,11 +19,11 @@
 | 加载真实字节 | `readFileSync(lib/client.js)` → `vm.runInContext`（自有 classic-script 加载器）→ 取 `factory(require('react'))` → `apply(ctx)` |
 | 不信任实现者 | 不 import `verify/**`；自带 mini-React（`createElement`/`useState`/`useRef`/`useEffect` + 依赖比较 + 重渲染）、DOM/AudioContext/fetch 桩、虚拟时钟 |
 | 「音色/音量」的证据形态 | **仪器化音频图**，不是计数器：`createOscillator().start()` 记录 `wave`+`freq`，接到 `destination` 的 master `gain.value` 记录音量（探针内 `makeAudioProbe()` / `chimes()`）；结果见 `r10-ind-probe-18-r10-sessions.txt:54-65` |
-| 宿主侧 | `import()` 真实 `lib/index.js`，真起 `node:http` 服务器，`registerSessionRoutes(ctx)` 挂 prefix 路由，再对 `127.0.0.1:<port>` 发真 HTTP |
+| DSH 侧 | `import()` 真实 `lib/index.js`，真起 `node:http` 服务器，`registerSessionRoutes(ctx)` 挂 prefix 路由，再对 `127.0.0.1:<port>` 发真 HTTP |
 | `$DSH_HOME` | 每次运行新建 `os.tmpdir()` 临时目录，**从不触碰真实 `~/.dsh`**；探针另断言 `sessionsFile()` 不落在真实 home 下（`r10-ind-probe-18-r10-sessions.txt:52` F0） |
 | 反证 | `--mutate=<name>` 加载**内存中**改坏的同一份字节（client 走字符串，host 走 `data:` URL 模块），要求观测到的红点集**恰好等于**声明集；`lib/**` 磁盘哈希前后不变（`r10-ind-probe-18-mutations.txt:1543-1544`） |
 
-宿主合同是**自己复核**的（未抄 t1 结论）：
+DSH 合同是**自己复核**的（未抄 t1 结论）：
 
 - 槽 `conversation.session.header.actions`：`kind:"list"`、`scope:"session"`、注册项 `id`(必填)/`order`/`label` —— `dsh-cordis-client-runner/lib/client.js:3102-3126`；其标准 props 明确含 `sessionId: SessionId`（:3141）与 `useSessionPendingInteraction`（:3134）；`replaceRisk:"none"`、占用者为 `agent-preset`/`job-list`/`schedule-catalog`/`agent-team`（:3149-3154）。
 - 会话作用域的 `sessionId` 是**普通 prop**：`dsh-client-ui-session/lib/client.js:61-70`（`props:["sessionId"]`、`props:{sessionId: binding.sessionId}`）→ `:246-267` 物化 → `dsh-client-ui-renderer/lib/client.js:538-539`(`{...binding.props}`)、`:551-573`、`:792` 合并进 entry kit。
@@ -200,7 +200,7 @@
 
 ---
 
-## 10. 已复现缺陷：铃铛快速连点两次后，本地表可以与宿主文件不一致
+## 10. 已复现缺陷：铃铛快速连点两次后，本地表可以与 DSH 文件不一致
 
 ### 10.1 现象
 
@@ -216,7 +216,7 @@ FINDING (measured, reproducible): the bell's final state disagreed with the stor
 
 - 两次点击发出的 patch 是**正确的**（先 `{enabled:false}` 再 `{enabled:null}`）；
 - 本地表 159 条、文件 160 条 —— **与 200 条上限无关**；
-- 结果：宿主文件停在**静音**（`fileRecord.enabled=false`，即第 1 次写的表赢了 rename 竞争），
+- 结果：DSH 文件停在**静音**（`fileRecord.enabled=false`，即第 1 次写的表赢了 rename 竞争），
   而客户端本地表**没有该记录**（`localRecord=null` → 铃铛显示「开」），即第 2 次请求的应答被最后应用；
 - 之后**没有任何再读**：`refreshSessions()` 只在 `apply` 挂载时调用一次（`lib/client.js:2739`），
   所以这个不一致会一直持续到下次刷新页面，并且**会驱动该会话的响铃判断**（`lib/client.js:983-1004`）。
@@ -226,7 +226,7 @@ FINDING (measured, reproducible): the bell's final state disagreed with the stor
 1. `writeSessionPatch` 先乐观改本地表，然后**无条件**用应答里的表覆盖本地表：
    `lib/client.js:1153-1178`（成功分支 `:1160-1168`）。
 2. 应答里带的 `revision` 被记下（`lib/client.js:1163`）却**从未被比较/用作栅栏**；全文件没有任何地方读 `sessions.revision` 做判断。
-3. 两次并发 POST 走两条 socket：客户端按**应答体被消费完的顺序**覆盖本地表，而这个顺序不保证等于宿主 `rename` 的落地顺序。
+3. 两次并发 POST 走两条 socket：客户端按**应答体被消费完的顺序**覆盖本地表，而这个顺序不保证等于 DSH `rename` 的落地顺序。
 
 ### 10.3 复现命令与频率
 
@@ -246,14 +246,14 @@ node verify-independent/probe-18-r10-sessions.mjs --race-rounds=1500 --race-side
 
 > 排查记录（避免误判）：最初用**虚拟时钟**跑同一实验时得到 4/400、2/400、1/400、1/30，
 > 但那些行长的签名是 `patchesSent:[false,false]`——本地表的 200 条淘汰按 `updatedAt`
-> 排序（`lib/client.js:929-942`），而虚拟时钟盖的 `updatedAt`（1.73e12）比宿主真实
+> 排序（`lib/client.js:929-942`），而虚拟时钟盖的 `updatedAt`（1.73e12）比 DSH 真实
 > `Date.now()`（1.79e12）小，导致客户端把自己刚写的记录当最旧踢掉。改成真实时钟后
 > **该类签名彻底消失**，剩下的 7 例全部带正确的 `[false,null]` patch 对。所以 §10.1 那条
 > （本地表 159 < 200，且 patch 对正确）是真实现象，不是我的桩造成的。
 
 ### 10.4 严重度与处置建议（未自行修改 `lib/**`）
 
-- severity：**medium**，非阻塞。理由：单次点击永远正确；只有「用户在同一帧/极短时间内连点两次」才可能触发，概率约 0.05%/次双击；后果是铃铛显示与宿主文件相反，并让该会话的响铃判断用旧值，**持续到页面刷新**（不会丢数据，宿主文件本身始终是两次写中合法的那个结果）。
+- severity：**medium**，非阻塞。理由：单次点击永远正确；只有「用户在同一帧/极短时间内连点两次」才可能触发，概率约 0.05%/次双击；后果是铃铛显示与 DSH 文件相反，并让该会话的响铃判断用旧值，**持续到页面刷新**（不会丢数据，DSH 文件本身始终是两次写中合法的那个结果）。
 - 建议修法（择一，供后续实施任务）：把每会话的写入串行化（同一 sessionId 至多一个 POST 在飞），或在最后一次未决写入落定后重新 `refreshSessions()`。
   **注意**：单纯加 `revision >` 栅栏**不够** —— 应答被反序投递时它会接受旧表、跳过新表（I2 已把这条写进探针注解 `r10-ind-probe-18-r10-sessions.txt:152-155`）。
 
@@ -266,7 +266,7 @@ node verify-independent/probe-18-r10-sessions.mjs --race-rounds=1500 --race-side
 | 真实浏览器里铃铛的渲染、尺寸、hover 提示的**实际弹出** | 无浏览器引擎：Edge 启动即 `FATAL:mojo\public\cpp\platform\platform_channel.cc:183 Check failed: 拒绝访问 (0x5)`，CDP 端口虽发布但无应答 —— `r10-ind-probe-13-r4-browser.txt:4-5` 与 `_raw/ind-probe-13-browser-launch.log:8`；探针 §B 只能断言**元素树与属性**（title/aria-label/`data-muted`/SVG path 数），不断言像素。 |
 | popover 的实际定位与遮挡（贴底向上翻、水平收进视口、会不会被带 `transform` 的祖先裁剪） | 同上；只断言了 `style.position==='fixed'`、矩形来自 `getBoundingClientRect`，以及 Escape 会关闭（`r10-ind-probe-18-r10-sessions.txt:26-32`）。 |
 | `order:30` 的**视觉落点**（在真实 header 里排在哪一格） | 本机未安装 `agent-team`（`@deepseek-ai` 下 0 个匹配包）且无浏览器；只能证明已装占用者为 -10/10/20、30 不与之冲突（`:9`）。 |
-| 真实 `dsh web` 端到端（页面加载 → 铃铛出现 → 点击 → 宿主文件变化 → 下一次刷新读回） | 需要真实浏览器 + 已挂载 profile；沙箱两者都没有。本报告的端到端只到「vm 内的真实字节 ⇄ 真实 HTTP ⇄ 真实 `lib/index.js` ⇄ 真实文件」为止（§6、§10）。 |
+| 真实 `dsh web` 端到端（页面加载 → 铃铛出现 → 点击 → DSH 文件变化 → 下一次刷新读回） | 需要真实浏览器 + 已挂载 profile；沙箱两者都没有。本报告的端到端只到「vm 内的真实字节 ⇄ 真实 HTTP ⇄ 真实 `lib/index.js` ⇄ 真实文件」为止（§6、§10）。 |
 
 此外，**同会话连点两次的应答乱序窗口**由「未证实」升级为**已复现**（§10）。
 
@@ -308,7 +308,7 @@ node verify-independent/probe-18-r10-sessions.mjs --race-rounds=1500 --race-side
 | `:38-47` | 文件头把它记为 rev-11、对应 rev-10 复审的 F-01 |
 | `:139` | `REVISION = 'rev-11 · per-session chime (race fix)'` |
 
-也就是说：rev-11 修的是「本地表最后被哪条应答覆盖」，做法是**最后一次未决写入落定后向宿主重读一次**。
+也就是说：rev-11 修的是「本地表最后被哪条应答覆盖」，做法是**最后一次未决写入落定后向 DSH 重读一次**。
 
 ## A.2 改动 1：probe-18 的 I2 期望（t6 的阻断项）
 
@@ -396,15 +396,15 @@ check('H6.stats-and-revision',
 | --- | --- | --- |
 | probe-18 | **131 断言 / 0 失败**，exit **0** | `r11-ind-probe-18-r10-sessions.txt:178`；`r11-run-console.txt:29` |
 | 变异体 | **9/9** 按声明精确报红（含新 `convergence-reread-removed`），`extra reds=(none)`；`lib/**` 磁盘哈希前后 unchanged | `r11-ind-probe-18-mutations.txt:1720`、`:1717-1718` |
-| race（raw 直通 fetch，1500 轮） | **0/1500 分歧**（宿主文件停在静音 760/1500） | `r11-ind-probe-18-race-raw.txt:146` |
-| race（clone 旁路 fetch，1500 轮） | **0/1500 分歧**（宿主文件停在静音 703/1500） | `r11-ind-probe-18-race-sidechannel.txt:146` |
+| race（raw 直通 fetch，1500 轮） | **0/1500 分歧**（DSH 文件停在静音 760/1500） | `r11-ind-probe-18-race-raw.txt:146` |
+| race（clone 旁路 fetch，1500 轮） | **0/1500 分歧**（DSH 文件停在静音 703/1500） | `r11-ind-probe-18-race-sidechannel.txt:146` |
 | 四套 harness | 124 + **302** + 22 + 74 = **522** 项全绿（client-half 由 282 增至 302，即 rev-11 新增的 20 项） | `r11-run-console.txt:10-13` |
 | 回归探针集（run-r4…run-r11，12 个） | 除 `probe-13`（无浏览器引擎，**预期**非零，`:23`）外全部 exit 0 | `r11-run-console.txt:17-29` |
 | 冻结路径 | 11 个文件逐行一致（`r11-frozen-diff.txt = identical`） | `r11-run-console.txt:76` |
 | **run-r11.ps1 总退出码** | **0** | `r11-run-console.txt:117` |
 
 对 §10 那个缺陷的收口结论：**rev-10 报告里那条「≈0.06% 的连点不一致」在 rev-11 上我独立复测为 0/3000**（两路各 1500 轮）。
-机制层面的证据是 I2/I2b（结构化的反序投递场景），概率层面的证据是这两路 1500 轮；两者都指向同一件事：最后一次未决写入落定后会重读一次，本地表因此等于宿主文件。
+机制层面的证据是 I2/I2b（结构化的反序投递场景），概率层面的证据是这两路 1500 轮；两者都指向同一件事：最后一次未决写入落定后会重读一次，本地表因此等于 DSH 文件。
 
 ## A.7 本附录涉及的产物（只动 `verify-independent/**` 与本文件）
 

@@ -3,7 +3,7 @@
 对象：`dsh-approval-chime` rev-7「设置入口从『设置 → 插件 → 插件配置』迁到独立的『设置 → 通知提醒』分区」。
 被验文件（只读）：`lib/client.js` / `lib/index.js`；冻结路径（未改）：`lib/**`、`verify/**`、`README.md`、`CHANGELOG.md`。
 
-**结论（一句话）**：rev-7 的客户端半确实落在了宿主 `settings.section` 槽上（`id='approval-chime'`、`order=16`、`label` thunk、`locale='approval-chime'`），`settings.plugin.item` 在真实的字节与桩槽调用记录里都不存在，迁移前那批控件一项未丢；四套 harness + 全部独立探针 + 审查者探针重跑无新增失败。真实浏览器渲染、导航行像素、真实 `dsh web` 端到端、真实文件对话框在**本沙箱内未证实**（见 §8）。
+**结论（一句话）**：rev-7 的客户端半确实落在了 DSH `settings.section` 槽上（`id='approval-chime'`、`order=16`、`label` thunk、`locale='approval-chime'`），`settings.plugin.item` 在真实的字节与桩槽调用记录里都不存在，迁移前那批控件一项未丢；四套 harness + 全部独立探针 + 审查者探针重跑无新增失败。真实浏览器渲染、导航行像素、真实 `dsh web` 端到端、真实文件对话框在**本沙箱内未证实**（见 §8）。
 
 | 项 | 结果 |
 | --- | --- |
@@ -21,7 +21,7 @@
 - 探针 `verify-independent/probe-17-r7-section.mjs` 的 import 只有 `node:crypto`、`node:fs`、`node:path`、`node:url`、`node:vm`（`:39-43`）。
   **没有** import `verify/_harness.mjs`，也**没有** import `verify-independent/kit/platform.mjs`：报告器（`:62`）、classic-script 加载器（`vm.createContext` + `window.__ModuleLoader__.load` 捕获，`:266-338`）、React 函数组件驱动器（真实 hook 槽，`:341-424`）、DOM 桩（`:202-239`）、插件上下文桩（`:427-560`）全部是本次新写的独立实现。
 - 断言分组：`:566`（字节锚定）、`:580`（槽注册）、`:619`（旧槽消除）、`:640`（locale/id/order）、`:712`（控件渲染）、`:792`（导入态）、`:810`（写入与闸门）、`:843`（变异反证）。
-- 探针只读两种真实字节：本插件 `lib/client.js`，以及宿主的 `@deepseek-ai/*/lib/client.js`（用于订单数字取证）。
+- 探针只读两种真实字节：本插件 `lib/client.js`，以及 DSH 的 `@deepseek-ai/*/lib/client.js`（用于订单数字取证）。
 - 运行器 `verify-independent/run-r7.ps1` 由 `run-r6.ps1` 派生，日志前缀 `r7-`，`r4`（`ind-probe-*-r4-*`）/`r5`（`r5-*`）/`r6`（`r6-*`）归档一律不覆盖。
 - 命令（`verify-independent/` 下执行，或从仓库根调用 run-r7.ps1）：
   ```
@@ -36,10 +36,10 @@
 
 - `lib/client.js` = **80889 B**，sha256 = **6B9C38CE738859C4D0007EE027B994353242D4C8C974B1E39A420CF48D54F5D1**
   —— 与 `CHANGELOG.md:40` 锚定字节、与 t1 交付说明**逐字节相同**；实现者写入 CHANGELOG 的锚点没有漂移。
-- `lib/index.js` = 27592 B / `75188B4C…`（`_raw/r7-baseline-before.txt`），与 `CHANGELOG.md:41` 一致 —— 宿主半确实一个字节未动。
+- `lib/index.js` = 27592 B / `75188B4C…`（`_raw/r7-baseline-before.txt`），与 `CHANGELOG.md:41` 一致 —— DSH 侧确实一个字节未动。
 - `lib/client.js` 无顶层 `import`/`export`（经典脚本约束，`lib/client.js:5`），加载器按 `<script src>` 语义执行。
 
-## 2. 我自己读的宿主合同（不是照抄实施者结论）
+## 2. 我自己读的 DSH 合同（不是照抄实施者结论）
 
 文件均在 `<dsh-install>\node_modules\@deepseek-ai\`：
 
@@ -65,7 +65,7 @@
 ```
 - 断言 `exactly one slots.inject happened` = 1、`the injected slot name` = `settings.section`、`exactly one slots.register happened` = 1。
 - `no settings.plugin.item slot was injected` = 0、`no settings.plugin.item registration ledger entry` = 0。
-- `the bundle no longer claims a keyed-card key`：`entry.key === undefined` —— 插件页只派发带 `key` 的注册（`dsh-client-ui-settings-plugins/lib/client.js:1145`），没有 `key` 就是**结构上不可能**出现在「插件配置」里，与宿主是否服务该命名空间无关。
+- `the bundle no longer claims a keyed-card key`：`entry.key === undefined` —— 插件页只派发带 `key` 的注册（`dsh-client-ui-settings-plugins/lib/client.js:1145`），没有 `key` 就是**结构上不可能**出现在「插件配置」里，与 DSH 是否服务该命名空间无关。
 
 **证 B —— 源码字符串级反证（无条件）**
 ```
@@ -77,7 +77,7 @@
 
 ## 4. 「在「通知提醒」上且紧跟「插件」之后」方向
 
-原始输出：同文件第 3 组。探针**每次运行都从宿主文件重读订单数字**，实测：
+原始输出：同文件第 3 组。探针**每次运行都从 DSH 文件重读订单数字**，实测：
 
 ```
 · host section registrations read first-hand =
@@ -90,8 +90,8 @@
 
 - 本插件实测：`name = settings.section`、`id = approval-chime`、`order = 16`、`label` 是 function、`locale = approval-chime`。
 - `order 16 落在 plugins(15) 与 agent-presets(20) 之间`：`15 < 16 < 20` ✓；同时 `> models(10) > general(0)` ✓。
-- **按宿主自己的投影规则复算**（`sort by order`）：`['general','models','plugins','approval-chime','agent-presets']` —— 这一行就落在「插件」的下一格。
-- **id 不撞车**：`approval-chime` 不等于 `general`/`models`/`plugins`/`agent-presets` 任何一个，即宿主合同里说的「fresh id 是新增一格，复用 shipped id 会顶替那一格」的反面判据成立。
+- **按 DSH 自己的投影规则复算**（`sort by order`）：`['general','models','plugins','approval-chime','agent-presets']` —— 这一行就落在「插件」的下一格。
+- **id 不撞车**：`approval-chime` 不等于 `general`/`models`/`plugins`/`agent-presets` 任何一个，即 DSH 合同里说的「fresh id 是新增一格，复用 shipped id 会顶替那一格」的反面判据成立。
 
 **locale 反应性**（同一实例内翻转，不重新注册）：
 - zh 实例：`label()` → `通知提醒`（dict `lib/client.js:980`）；en 实例：`label()` → `Notifications`（`:1023`）。
@@ -100,12 +100,12 @@
 
 ## 5. 「没丢东西」方向：控件逐项对照（React 桩渲染，一次都没少）
 
-原始输出：同文件第 4、5、6 组。渲染的是**桩槽记录里真实注册的组件函数**（`ChimeSection`，`lib/client.js:1233`），props 只有宿主会给的 `close`。
+原始输出：同文件第 4、5、6 组。渲染的是**桩槽记录里真实注册的组件函数**（`ChimeSection`，`lib/client.js:1233`），props 只有 DSH 会给的 `close`。
 
 | 迁移前控件/行为 | 断言 | 证据 |
 | --- | --- | --- |
 | 页级标题 | 唯一一个 `<h2>` 文本 = `通知提醒` | 与导航行同文（`lib/client.js:1595`，读 `t('title')`） |
-| 说明行 | intro 文本 = `宿主向你申请权限时响一次…` | `lib/client.js:1598` |
+| 说明行 | intro 文本 = `DSH 向你申请权限时响一次…` | `lib/client.js:1598` |
 | 启用勾选 | 恰好 1 个 checkbox，默认 checked，且包在 `<label>` 里带文字 | `lib/client.js:1451-1466` |
 | 音量滑杆 | 恰好 1 个 range，min0/max100/step1，值 70，`aria-label=音量`，可写时可点 | `lib/client.js:1474-1492` |
 | 音色下拉 | 恰好 1 个 select，选项 `chime/bell/beep`，`aria-label=音色` | `lib/client.js:1500-1515` |
@@ -120,7 +120,7 @@
 | 计数行 | `已触发: 0` / `上次触发: 尚未触发` / `最近音色/音量: —` / `已见审批: 0` / `音频状态: 未创建…` | `lib/client.js:1571-1583` |
 | 抑制原因行 / 只读徽标 / 已覆盖徽标 / 错误行 | 条件渲染仍在（第 6 组覆盖写入路径；条件分支按 `snapshot` 决定） | `lib/client.js:1440-1445`、`:1467-1468`、`:1585-1587` |
 | bundleRevision 徽标 | 右上角 `.dacRev` 文本 = `rev-7 · notifications section` | `lib/client.js:108`（REVISION）、`:1596` |
-| 「可用才渲染」闸门 | `status=loading` 渲染 `null`；转 `ready`（并按宿主语义通知 scope 订阅者）后有页面；转 `error` 又回到 `null` | `lib/client.js:1264` |
+| 「可用才渲染」闸门 | `status=loading` 渲染 `null`；转 `ready`（并按 DSH 语义通知 scope 订阅者）后有页面；转 `error` 又回到 `null` | `lib/client.js:1264` |
 | 写入路径未变 | 拖杆→松手恰好 1 次 `set{volume:35}`；开关→`set{enabled:false}`；全程只走绑定的 settings scope | `lib/client.js:1280-1305` |
 
 ## 6. 反证能力：5 个变异体必须报红（变异只改内存字符串，磁盘零改动）
@@ -131,7 +131,7 @@
 | --- | --- | --- | --- |
 | 基线（真实字节） | `node probe-17-r7-section.mjs` | 0 | `[shipped]: 94/94` |
 | 仍注册 `settings.plugin.item` | `--mutate=slot` | 1 | `[mutant:slot]: 91/98`；`every expected check failed … all 3 expected failures observed`（槽名、账本里那条 `settings.plugin.item`、`entry.key` 出现） |
-| order 写错（16→99） | `--mutate=order` | 1 | `[mutant:order]: 93/96`；`all 1 expected failures observed`（`order is 16` 报红，且宿主投影复算把本行排到了 Agent 预设之后） |
+| order 写错（16→99） | `--mutate=order` | 1 | `[mutant:order]: 93/96`；`all 1 expected failures observed`（`order is 16` 报红，且 DSH 投影复算把本行排到了 Agent 预设之后） |
 | 控件缺失（删 `<h2>`） | `--mutate=heading` | 1 | `[mutant:heading]: 94/96`；`all 2 expected failures observed` |
 | 播放下拉回归（删 3 行高度规则） | `--mutate=picker` | 1 | `[mutant:picker]: 95/96`；`all 1 expected failures observed` |
 | 「旧的没删干净」：新分区之外再偷偷注册 `settings.plugin.item` | `--mutate=rogue` | 1 | `[mutant:rogue]: 93/99`；`all 3 expected failures observed`（`slots.inject` 变 2 次、`slots.register` 变 2 次、账本里出现插件页槽） |
@@ -228,7 +228,7 @@ IDENTICAL — no frozen file changed during this verification run
 | 注册形态 `id/order/label/locale` | `CHANGELOG.md:15-17` | ✓ 一致（§3、§4） |
 | 「插件页不再出现本插件」 | `README.md:71,172`、`docs/挂载与验收.md:248` | ✓ 结构侧成立（不注册 `key` → 交集恒空）；**界面侧未证实（§8）** |
 | `id` 自用不顶替、order 16 紧跟「插件」15 | `CHANGELOG.md:31-32` | ✓ 一致（§4） |
-| `settings.section` 未被官方写明为第三方扩展点 | `CHANGELOG.md:46-48`、`README.md:252`（H13） | ✓ 我独立复核：该槽由设置外壳自己声明（`dsh-client-ui-settings-general/lib/client.js:621-624`），宿主包的 `exports` 只暴露 `apply`/`inject`；**「官方文档背书」确实不存在**，此项的自述是诚实的 |
+| `settings.section` 未被官方写明为第三方扩展点 | `CHANGELOG.md:46-48`、`README.md:252`（H13） | ✓ 我独立复核：该槽由设置外壳自己声明（`dsh-client-ui-settings-general/lib/client.js:621-624`），DSH 包的 `exports` 只暴露 `apply`/`inject`；**「官方文档背书」确实不存在**，此项的自述是诚实的 |
 
 ## 11. 与原 acceptance 的逐条对应
 
@@ -236,7 +236,7 @@ IDENTICAL — no frozen file changed during this verification run
 | --- | --- | --- | --- |
 | 1 | 自用加载器 + 断言 `slots.inject('settings.section')` 上恰好一次、选项 id/order/label;`settings.plugin.item` 双证不存在 | **通过** | §0、§3；`_raw/r7-ind-probe-17-r7-section.txt` 第 0-2 组 |
 | 2 | React 桩渲染全部控件（h2/intro/勾选/滑杆/下拉 3 行+`::picker` CSS/导入/file input/删除/试听/计数行/rev 徽标） | **通过** | §5；同文件第 4-5 组 |
-| 3 | locale 反应性 + id 不冲突 + order 落在 15 与 20 之间（引用宿主行号取证） | **通过** | §4；同文件第 3 组 |
+| 3 | locale 反应性 + id 不冲突 + order 落在 15 与 20 之间（引用 DSH 行号取证） | **通过** | §4；同文件第 3 组 |
 | 4 | `run-r7.ps1` 全量回归，除 probe-13 外全部 exit 0，逐 probe 汇总+退出码入报告 | **基本通过，1 处如实偏差** | §7；`_raw/r7-run-console.txt`。偏差=审查者 `reqcheck.mjs` 也 exit 1，但为 **rev-6 就存在的既有差异**（§7.4），非 rev-7 引入 |
 | 5 | 报告逐条指向文件+行号或 `_raw/r7-*.txt` 行号；未证实项单列一节 | **通过** | 本文件 §1-§11、§8 |
 | 6 | 验证者未改 `lib/**`、`verify/**`、`README/CHANGELOG`，前后 sha256 一致 | **通过** | §9 |

@@ -2,7 +2,7 @@
 
 > **一句话结论**：用户的 5 条原话里 **R1 / R2 / R3 / R4 通过**，**R5 部分不达标**——`lib/client.js:988` 的 `max-height:92px` 在 Chromium 的 UA 样式表（`::picker(select){box-sizing:border-box}`）下只有 **82px 内容区**，而 3 个内置选项就有 **84px**：**默认状态（一个文件都没导入）打开音色下拉就会出现滚动条，并裁掉第 3 行 2px**，与「3 个选项时不应滚动、第 4 个起才滚动」不符。因此最终判定为 **需修正**（一行 CSS 即可修好；R1–R4 与导入→选中→播放→移除 主流程可交付）。
 >
-> 本审查**没有修改任何产品代码**（`lib/**`、`verify/**` 的 SHA-256 与两份报告记录一致，见 §0.2）。我自写了一支与两份报告都无关的探针（`.scratch/reviewer-r5/reqcheck.mjs`，**39 项断言全绿**，含 50 项上限场景），并且**复核了两份验证报告的证据强度**：其中宿主报告的 U1 推断（"所以 `::picker` 保持初始 content-box"）**不成立**，这正是 2px 误差能够存活两轮验证的原因（§3）。
+> 本审查**没有修改任何产品代码**（`lib/**`、`verify/**` 的 SHA-256 与两份报告记录一致，见 §0.2）。我自写了一支与两份报告都无关的探针（`.scratch/reviewer-r5/reqcheck.mjs`，**39 项断言全绿**，含 50 项上限场景），并且**复核了两份验证报告的证据强度**：其中 DSH 报告的 U1 推断（"所以 `::picker` 保持初始 content-box"）**不成立**，这正是 2px 误差能够存活两轮验证的原因（§3）。
 >
 > ⚠️ **rev-5 更新（任务 t4）**：本文的 R5 判定与 R5-1 / D1 / F1 等缺陷均已在 rev-5 修复，**最终结论改为「可交付」**——见文末**附录 B** 与 `docs/rev5-需求复审.md`。上文保持 rev-4 的冻结记录不变。
 
@@ -16,8 +16,8 @@
 | --- | --- |
 | 被测修订 | `lib/client.js` **rev-4 · custom audio**（`REVISION` 常量），`dsh-approval-chime` 包 |
 | 被测文件哈希（本审查实测，与两份报告逐字节一致） | `lib/client.js` 66 998 B `A4E452380184C0FB3EC4F4094B18D2516B11B769A18560DE29FB23562D67383B`（mtime 2026-09-15 20:34）<br>`lib/index.js` 22 684 B `A3DF98244E13A7ACC0AA71349DAF6FC23E799ADAE19C3B642337256288FAA301`（mtime 2026-09-15 20:35） |
-| 报告 A | `dsh-approval-chime/docs/rev4-独立验证.md`（宿主路由半；探针 `verify-independent/probe-{7..10}-*.mjs`，455 断言 / 4 失败） |
-| 报告 B | `dsh-approval-chime/docs/rev4-浏览器半独立验证.md`（t1 产出；探针 `probe-{7..13}-r4-*.mjs`，262 断言全绿 + probe-13 记录环境限制） |
+| 报告 A | `dsh-approval-chime/docs/rev4-独立验证.md`（DSH 路由半；探针 `verify-independent/probe-{7..10}-*.mjs`，455 断言 / 4 失败） |
+| 报告 B | `dsh-approval-chime/docs/rev4-浏览器侧独立验证.md`（t1 产出；探针 `probe-{7..13}-r4-*.mjs`，262 断言全绿 + probe-13 记录环境限制） |
 | 用户原话来源 | 任务 t2 描述（5 条逐字引用，见 §1） |
 | 平台事实来源 | `node_modules/@deepseek-ai/dsh-client-ui-settings/lib/client.js`（DSH 安装里的客户端 bundle；`~/.dsh/profiles/node_modules/@deepseek-ai/dsh-client-ui-settings` 是指向它的 junction，字节相同，sha256 `479002D654490D19CBC89ED4582198603EDDF2A62E3D233BBD30748F1BC0D862`） |
 | 外部事实来源 | Chromium UA 样式表 `third_party/blink/renderer/core/html/resources/html.css`（main 分支，本文引用其 `select:not(:-internal-list-box)::picker(select)` 规则）；WHATWG HTML Rendering §15.5.16 的 UA 样式表文本；CSSWG issue #10857（该 UA 样式表的提案与讨论） |
@@ -25,7 +25,7 @@
 ### 0.2 本次审查做了什么、没做什么
 
 - **做了**：逐条把 5 条原话折成可检验命题；对照真实代码逐行核对（`文件:行`）；**自写**一支独立探针驱动真实 `lib/client.js`（自带 React hook 运行时、自带 settings-scope 桩、假 DOM/假 WebAudio/假 fetch），在 vm 里实测 DOM 顺序、原生文件选择通路、导入后**无需重新挂载**的选项刷新、3 次导入 + 移除中间项 + 再导入的顺序，以及 CSS 几何；机械化复核两份报告的哈希/时间戳/原始输出/探针来源；用 UA 样式表这一**代码之外的事实**重算了 R5 的盒模型。
-- **没做**：没有修改 `lib/**`、`verify/**`、`verify-independent/**`（我的脚本放在仓库外的 `.scratch/reviewer-r5/`）；没有起浏览器（沙箱不允许，见 §4）；没有重复宿主报告的 socket 级工作。
+- **没做**：没有修改 `lib/**`、`verify/**`、`verify-independent/**`（我的脚本放在仓库外的 `.scratch/reviewer-r5/`）；没有起浏览器（沙箱不允许，见 §4）；没有重复 DSH 报告的 socket 级工作。
 - **环境限制（我独立确认过）**：Edge `153.0.4234.32` 存在但 Chromium 无法启动——`verify-independent/_raw/ind-probe-13-browser-launch.log` 里有 `FATAL:mojo\public\cpp\platform\platform_channel.cc:183 Check failed: . : 拒绝访问。 (0x5)`，本会话 `workspace-write` + 审批禁用，无法放开。另一个取证途径也被证否：我用**自己的**两条对照串扫了 348 MB 的 `msedge.dll`（`.scratch/reviewer-r5/scan-dll.mjs`），`::picker(select)` **0 命中**、`input[type=` 只有 2 处密码表单告警文本（非 CSS）→ 与报告 B 的结论一致：**UA 样式表不以明文存放在二进制里**，无法从本机浏览器字节里读出该规则。
 
 ---
@@ -36,7 +36,7 @@
 | --- | --- | --- | --- | --- |
 | R1 | 「在选择音色的按钮右边加一个导入按钮」 | **PASS** | 音色行子节点顺序实测 `["span.dacLabel","select","input[file].dacFile","button(导入音频)",…]`（我的探针）；代码 `lib/client.js:1285-1360`（行）、`:1289-1305`（select）、`:1307-1313`（隐藏 file input）、`:1314-1326`（导入按钮） | 硬（渲染树 + 源码双证） |
 | R2 | 「点击之后可选择用户电脑里的自定义音频文件」 | **PASS** | `<input type="file" accept="audio/*" class="dacFile">`（实测）+ 按钮 `onClick → fileRef.current.click()`（`:1320-1323`）；全卡无拖拽/路径输入（实测 0 处） | 硬（结构+通路）；真实对话框外观需人工 |
-| R3 | 「用户加入音频文件之后要在选择框内出现」（无需刷新） | **PASS**（通路级） | 实测：settings 写入触发的 scope 通知 → 卡片 `store` 订阅 → hook#0 状态变更，**同一挂载实例**（`renders=2, effects=1`）后选项即为 `[custom:…, chime, bell, beep]`；平台侧 `dsh-client-ui-settings/lib/client.js:1040-1055`（写入应答 `acceptView`）→ `:990`（mirror 订阅 → derive）→ `:1083-1105`（新快照） | 硬（插件半实测 + 平台源码）；真实宿主+浏览器端到端待人工 |
+| R3 | 「用户加入音频文件之后要在选择框内出现」（无需刷新） | **PASS**（通路级） | 实测：settings 写入触发的 scope 通知 → 卡片 `store` 订阅 → hook#0 状态变更，**同一挂载实例**（`renders=2, effects=1`）后选项即为 `[custom:…, chime, bell, beep]`；平台侧 `dsh-client-ui-settings/lib/client.js:1040-1055`（写入应答 `acceptView`）→ `:990`（mirror 订阅 → derive）→ `:1083-1105`（新快照） | 硬（插件半实测 + 平台源码）；真实 DSH+浏览器端到端待人工 |
 | R4 | 「第一个文件放第一个，第二个放第二个，依次类推」 | **PASS** | 追加写入 `:1194-1198`；渲染顺序 `:1155-1159`；移除用 `filter` 保序 `:1209-1211`；实测 3 次导入顺序 = 导入顺序、移除中间项后剩 `[A, C]`、再导入落在末尾 | 硬（实测 + 源码） |
 | R5 | 「显示三个选项，当有第四个选项时变成可滚动」 | **PARTIAL / 不达标** | 行高 28px、3 行 84px、`max-height:92px`（`:988`、`:990`）实测；但 UA 样式表把 `::picker(select)` 定为 `box-sizing:border-box` → 内容区只有 `92-8-2=82px` < 84px ⇒ **3 个选项就溢出 2px（滚动条出现、第 3 行被裁 2px）**，第 4 项起才滚动这一点成立 | 几何＝硬（样式表实测）；盒模型＝外部一手资料（Chromium UA CSS / WHATWG / CSSWG），**本机无法起引擎实测** |
 
@@ -70,13 +70,13 @@ tone row children, in DOM order =
 | 事实 | 证据 |
 | --- | --- |
 | 存在原生 `input[type=file]` | 实测 `{"type":"file","accept":"audio/*","className":"dacFile"}`，源码 `lib/client.js:1307-1313` |
-| 带扩展名/类型过滤 | `accept: 'audio/*'`（`:1309`）；宿主再按扩展名白名单二次校验（`lib/index.js:74-84`、`:406-413`，不合法 → 415） |
+| 带扩展名/类型过滤 | `accept: 'audio/*'`（`:1309`）；DSH 再按扩展名白名单二次校验（`lib/index.js:74-84`、`:406-413`，不合法 → 415） |
 | 点击按钮才打开选择器 | `onClick: () => fileRef.current.click()`（`:1320-1323`）；我的探针把 `input.click` 换成计数器后测得 `click() calls=1` |
 | 不是拖拽/路径输入 | 全卡 `onDrop/onDragOver/text input` 命中 0 处（实测）；无任何路径输入框 |
 | 选同一个文件两次仍然有效 | `:1180` 把 `input.value=''` 复位后再读 `files[0]` |
 | 5 MB 上限在浏览器侧先拒绝 | `:1182-1185`（`file.size > MAX_AUDIO_BYTES` → 卡片提示"文件超过 5 MB 上限"，不发请求；报告 B 的 probe-7 shape F 实测请求数 0） |
 
-**残余（需人工）**：`accept` 只是过滤器，用户在系统对话框里切到"所有文件"仍可选 `.txt`——此时宿主 415，卡片显示「导入失败: unsupported audio type …」（有反馈、不静默）。真实对话框能否弹出属 §4 的人工项（headless 环境无法验证，`display:none` + 程序化 `click()` 是现代浏览器通行写法，但需要一次真人确认）。
+**残余（需人工）**：`accept` 只是过滤器，用户在系统对话框里切到"所有文件"仍可选 `.txt`——此时 DSH 415，卡片显示「导入失败: unsupported audio type …」（有反馈、不静默）。真实对话框能否弹出属 §4 的人工项（headless 环境无法验证，`display:none` + 程序化 `click()` 是现代浏览器通行写法，但需要一次真人确认）。
 
 ### 2.3 R3 「用户加入音频文件之后要在选择框内出现」（无需刷新）
 
@@ -91,7 +91,7 @@ tone row children, in DOM order =
    - 应答 ok 时 **`this.mirror.acceptView(response.value)`（`:1053`）**；
    - `acceptView`（`:1265-1278`）把该命名空间的新视图 `store.set(...)` 进镜像 → 镜像订阅者被通知；
    - 每个绑定 scope 在构造时就订阅了镜像：`mirror.subscribe(() => this.derive())`（`:990`），`derive()`（`:1083-1105`）把新的 `user/value/revision` 写进 scope 自己的 store → **scope 订阅者被通知**。
-   - 另有一条独立刷新路径：宿主转发 `settings/document-updated` 时镜像整体重读（该包 README.md:54 / README.zh.md:54），即使写应答折叠失败也会补上。
+   - 另有一条独立刷新路径：DSH 转发 `settings/document-updated` 时镜像整体重读（该包 README.md:54 / README.zh.md:54），即使写应答折叠失败也会补上。
 4. 插件侧：`applyInner` 里 `scope.subscribe(() => publish())`（`lib/client.js:1477-1493`）→ `publish()`（`:796-830`）重新 `readScopeSnapshot()` 折叠出 `custom` 选项 → `store.update` 发布新快照。
 5. 卡片侧：`React.useEffect` 里 `store.subscribe(() => setSnapshot(store.getSnapshot()))`（`:1051-1060`）→ 重渲染。选项完全来自快照（`:1155-1162`），没有本地缓存需要失效。
 6. 面板可见性：卡片在 `snapshot.available !== true` 时渲染 `null`（`:1062`），而 scope 状态在写入前后都保持 `ready`（`derive()` 只在命名空间缺失时才置 `unavailable`），因此**导入过程中卡片不会先消失再出现**。
@@ -112,7 +112,7 @@ tone row children, in DOM order =
 
 两条 `duringScopeNotify:true` 的 hook#0 变更正是 `set('custom')` 与 `set('tone')` 两次写入广播的结果。
 
-**未证实（§4-5）**：真实 `dsh web` 宿主进程 + 真实浏览器里的端到端（写入落盘、广播、UI 刷新）。平台传输层我读到的是**实际被服务的 bundle 字节**（junction 同哈希），但"真实进程里从点击到看见"这一步仍需人工确认。
+**未证实（§4-5）**：真实 `dsh web` DSH 进程 + 真实浏览器里的端到端（写入落盘、广播、UI 刷新）。平台传输层我读到的是**实际被服务的 bundle 字节**（junction 同哈希），但"真实进程里从点击到看见"这一步仍需人工确认。
 
 ### 2.4 R4 「用户添加的文件要放在选择框第一个，第二个放第二个，依次类推」
 
@@ -184,7 +184,7 @@ select:not(:-internal-list-box)::picker(select) {
 
 ## 3. 证据强度复核（两份报告）
 
-### 3.1 报告 A：`docs/rev4-独立验证.md`（宿主路由半）
+### 3.1 报告 A：`docs/rev4-独立验证.md`（DSH 路由半）
 
 **是实测的（硬）**
 
@@ -194,20 +194,20 @@ select:not(:-internal-list-box)::picker(select) {
 
 **是推断/代理的（软）**
 
-- 浏览器半的 C1–C11 全部经 **mini React 桩 + 假 AudioContext + 假 DOM**：断言的是"插件构建的元素树/音频图/scope 写入"，不是真实 React/引擎行为。作为**插件逻辑**证据是充分的（顺序、计数、缓存身份、增益值），作为**浏览器行为**证据不足。
-- 启动降级的 `effect` 同步语义是从 cordis 源码读出来的（`:1249/:1261`），并用桩复现——属"读源码 + 桩"，不是真实宿主启动。
-- U1–U7 未证实项列得基本完整（真实浏览器、真实 WebAudio、真实宿主激活、真实 fetch 时序、真实端到端），态度合格。
+- 浏览器侧的 C1–C11 全部经 **mini React 桩 + 假 AudioContext + 假 DOM**：断言的是"插件构建的元素树/音频图/scope 写入"，不是真实 React/引擎行为。作为**插件逻辑**证据是充分的（顺序、计数、缓存身份、增益值），作为**浏览器行为**证据不足。
+- 启动降级的 `effect` 同步语义是从 cordis 源码读出来的（`:1249/:1261`），并用桩复现——属"读源码 + 桩"，不是真实 DSH 启动。
+- U1–U7 未证实项列得基本完整（真实浏览器、真实 WebAudio、真实 DSH 激活、真实 fetch 时序、真实端到端），态度合格。
 
-**证据强度缺陷（EV-1，low，但结论方向性错误）**：U1 一行里的推断 ——「核对了宿主 CSS…**没有**全局 `*{box-sizing:border-box}` 复位…所以 `::picker` 保持初始 `content-box`，92px=84px 行+8px 内边距在算术上正好 3 行」——**不成立**：
-1. `box-sizing` 是**非继承**属性，`*` 选择器**不匹配伪元素**（`::picker(select)` 的样式只能由匹配它的规则或 UA 样式表给出），所以"宿主 CSS 有没有 `*` 复位"与本题无关；
+**证据强度缺陷（EV-1，low，但结论方向性错误）**：U1 一行里的推断 ——「核对了 DSH CSS…**没有**全局 `*{box-sizing:border-box}` 复位…所以 `::picker` 保持初始 `content-box`，92px=84px 行+8px 内边距在算术上正好 3 行」——**不成立**：
+1. `box-sizing` 是**非继承**属性，`*` 选择器**不匹配伪元素**（`::picker(select)` 的样式只能由匹配它的规则或 UA 样式表给出），所以"DSH CSS 有没有 `*` 复位"与本题无关；
 2. 决定该伪元素盒模型的是 **UA 样式表**，而 Chromium 的 UA 样式表明确写 `box-sizing: border-box`（§2.5）。
    报告把 U1 整体列为"未证实"的处理是对的，但这句中间推断必须撤回/更正——它恰好把唯一没有外部证据的一步（盒模型）引向了与事实相反的方向。**这正是 2px 误差能穿过两轮验证的原因。**
 
-### 3.2 报告 B：`docs/rev4-浏览器半独立验证.md`（t1）
+### 3.2 报告 B：`docs/rev4-浏览器侧独立验证.md`（t1）
 
 **是实测的（硬）**
 
-- 名册断言落在**卡片渲染出的 `<option>` 序列**上（6 种输入形状 + 真实导入路径），并与 `diagnostics.toneOptions()`、scope 写入顺序三方交叉；并发/缓存按 **AudioBuffer 对象身份（`===`）** 断言；主增益按"唯一接到 destination 的 gain 节点"**结构识别**（不是读源码字符串）；注入面用 10 类 HTML sink 全 0 + 载荷只作字符串子节点进树；宿主 `displayName` 用**真实路由处理器**驱动并做 POST/DELETE 往返、清理上传物。
+- 名册断言落在**卡片渲染出的 `<option>` 序列**上（6 种输入形状 + 真实导入路径），并与 `diagnostics.toneOptions()`、scope 写入顺序三方交叉；并发/缓存按 **AudioBuffer 对象身份（`===`）** 断言；主增益按"唯一接到 destination 的 gain 节点"**结构识别**（不是读源码字符串）；注入面用 10 类 HTML sink 全 0 + 载荷只作字符串子节点进树；DSH `displayName` 用**真实路由处理器**驱动并做 POST/DELETE 往返、清理上传物。
 - 262 项断言全绿、0 条被证伪，`_raw/ind-probe-{7..13}-r4-*.txt` 存在且尾部计数与报告一致，mtime 20:56:50-20:57:01 晚于 `lib/**` 的 20:34/20:35。
 - **未证实项处理正确**：U1（`box-sizing` 决定第 3 行是否裁 2px）、U2（引擎里 value 匹配 option 不空白）、U3（React 文本节点不执行）、U4（降级弹窗取色）都单列，没有写成通过。probe-13 专门记录"环境让哪些测量做不了"（Edge 能写出 `DevToolsActivePort`，随后 Mojo 命名管道被拒 FATAL 0x5）——我独立复核了启动日志里的该行，确认这是环境限制而非被测实现的问题。
 
@@ -222,9 +222,9 @@ select:not(:-internal-list-box)::picker(select) {
 
 **（a）"测试与被测代码同一作者"——不成立。**
 
-- 被测代码在 `dsh-approval-chime/lib/**`；实现者的自测桩在 `verify/_harness.mjs` + `verify/*.test.mjs`；两份报告的仪器分别是 `verify-independent/kit/rev4.mjs`（t1）与 `verify-independent/kit/rev4-kit.mjs`（宿主半）、`kit/platform.mjs`（另一个成员早先的 kit）。
+- 被测代码在 `dsh-approval-chime/lib/**`；实现者的自测桩在 `verify/_harness.mjs` + `verify/*.test.mjs`；两份报告的仪器分别是 `verify-independent/kit/rev4.mjs`（t1）与 `verify-independent/kit/rev4-kit.mjs`（DSH 侧）、`kit/platform.mjs`（另一个成员早先的 kit）。
 - 机械化核查一：`verify-independent/**/*.mjs` 里**没有任何 import 指向 `verify/**`**（全文仅注释提到"不 import"）。
-- 机械化核查二（我做的）：把 `verify/_harness.mjs` 与两份 kit 去掉空行与注释后逐行比对，重合行数分别为 **1 行**（t1 kit 的 `return Promise.resolve();`）与 **15 行**（宿主 kit，全是 `addEventListener(type, handler){`、`const a = JSON.stringify(actual);`、`import vm from 'node:vm';` 之类通用样板）→ 不是复制实现者仪器，独立性成立。
+- 机械化核查二（我做的）：把 `verify/_harness.mjs` 与两份 kit 去掉空行与注释后逐行比对，重合行数分别为 **1 行**（t1 kit 的 `return Promise.resolve();`）与 **15 行**（DSH kit，全是 `addEventListener(type, handler){`、`const a = JSON.stringify(actual);`、`import vm from 'node:vm';` 之类通用样板）→ 不是复制实现者仪器，独立性成立。
 
 **（b）"断言复述实现"——部分成立，而且正是 R5 出问题的位置。**
 
@@ -237,7 +237,7 @@ select:not(:-internal-list-box)::picker(select) {
 
 ---
 
-## 4. 仍需真人浏览器 / 真实宿主确认项
+## 4. 仍需真人浏览器 / 真实 DSH 确认项
 
 | # | 项目 | 为什么现在定不了 | 怎么验（可直接照做） |
 | --- | --- | --- | --- |
@@ -247,9 +247,9 @@ select:not(:-internal-list-box)::picker(select) {
 | M4 | **真实文件选择对话框 + `accept="audio/*"` 过滤** | 系统对话框无法 headless 触发 | 点「导入音频」，确认弹出系统选择器且默认过滤音频；再试"所有文件"选 `.txt`，确认卡片显示「导入失败: unsupported audio type …」 |
 | M5 | **真实音频可听性**：mp3/wav/ogg 实际解码、音量档位听感、审批触发时是否响 | 假 AudioContext 只记录音频图，不解码 | 导入一段短音频 → 试听 → 触发一次审批；听 5 档音量的响度梯度 |
 | M6 | **自动播放策略下的解锁**：未点过页面前审批到达是否静音、点「试听」后是否恢复 | 需要真实 AudioContext 的 suspended/resume 时序 | 刷新页面后不点击，等一次审批（应计数 `suppressedPolicy`）；再点「试听」后触发第二次审批（应发声） |
-| M7 | **端到端"无需刷新"**：真实宿主里的 `settings.mutate` → `document-updated` → 卡片刷新 | 需要真实 `dsh web` 进程 + 浏览器 | 导入一个文件，确认下拉里立刻出现且被选中，不刷新页面；再开第二个标签页看是否同步 |
-| M8 | **持久化**：重启 `dsh web` 后名册仍在、音频文件仍能播 | 未重启宿主 | 导入 → 重启 → 打开卡片：选项仍在、能试听（`audio/` 目录里应存在 `<uuid>.<ext>`） |
-| M9 | **宿主 413 契约（D1）在真实 `fetch` 下的表现** | 需要真实 socket（已在裸 socket 层证实收不到 413） | 上传 >5 MB 文件（或用脚本 POST），确认浏览器只报 network error 而非 413；卡片路径因 `lib/client.js:1182` 本地先拒绝而不可达 |
+| M7 | **端到端"无需刷新"**：真实 DSH 里的 `settings.mutate` → `document-updated` → 卡片刷新 | 需要真实 `dsh web` 进程 + 浏览器 | 导入一个文件，确认下拉里立刻出现且被选中，不刷新页面；再开第二个标签页看是否同步 |
+| M8 | **持久化**：重启 `dsh web` 后名册仍在、音频文件仍能播 | 未重启 DSH | 导入 → 重启 → 打开卡片：选项仍在、能试听（`audio/` 目录里应存在 `<uuid>.<ext>`） |
+| M9 | **DSH 413 契约（D1）在真实 `fetch` 下的表现** | 需要真实 socket（已在裸 socket 层证实收不到 413） | 上传 >5 MB 文件（或用脚本 POST），确认浏览器只报 network error 而非 413；卡片路径因 `lib/client.js:1182` 本地先拒绝而不可达 |
 | M10 | **React 是否把文件名渲染成文本节点**（注入面收尾） | 本机无 React | 文件名 `<img src=x onerror=alert(1)>.wav` 导入后，断言 `document.querySelector('.dacCard img') === null` |
 | M11 | **不支持 `base-select` 的浏览器里的降级**（原生弹窗完整列出、取色是否符合注释） | 无此类引擎 | Chrome<135 / Firefox 上打开下拉截图 |
 
@@ -268,12 +268,12 @@ select:not(:-internal-list-box)::picker(select) {
   - 方案 C：保留 border-box，改 `max-height:94px`（= 84+8+2）。
 - 附带：修好后注释里的"20px line box + 4px padding twice"仍是 28px 的唯一依据，建议把盒模型写进注释，避免下一次再按 content-box 误算。
 
-### D1（medium · 宿主契约，转述报告 A，我复核了代码路径与承诺）超限上传的 413 到不了客户端
+### D1（medium · DSH 契约，转述报告 A，我复核了代码路径与承诺）超限上传的 413 到不了客户端
 
 - 位置：`lib/index.js:367-383`（`:375` 在 `reject` 后立刻 `req.destroy()`）→ `:414-420`（catch 里 `respond(res, 413, …)`）→ `:331-341`（写进已销毁 socket）。
 - 实测（报告 A，裸 socket 三种写法）：客户端 `receivedBytes=0`；服务端 `writableEnded:true, bytesWritten:0`。与 `README.md:79`、`CHANGELOG.md:20` 承诺的"超限 → 413"不一致。
 - 最小复现：`curl --data-binary @5242881B.bin -H "x-chime-name: over.wav" http://127.0.0.1:<port>/api/approval-chime/audio` → 连接被断/reset，收不到 413；或跑 `verify-independent/probe-7-host-audio-http.mjs` §5。
-- 缓解现状：卡片路径走不到（`lib/client.js:1182` 本地先按 `file.size` 拒绝）→ 用户不受影响；但脚本/未来客户端无法区分"文件太大"与"宿主挂了"。
+- 缓解现状：卡片路径走不到（`lib/client.js:1182` 本地先按 `file.size` 拒绝）→ 用户不受影响；但脚本/未来客户端无法区分"文件太大"与"DSH 挂了"。
 - 建议修法：先 `writeHead/end(413)` 并等待 flush，再 `req.destroy()`（或 `req.pause()` + `connection: close`）。
 
 ### F1（medium · 健壮性，t1 发现，我复核了不对称点）采样路径未防"同步抛错"
@@ -290,9 +290,9 @@ select:not(:-internal-list-box)::picker(select) {
 | --- | --- | --- | --- |
 | F2 | 文档说 `volume<=0` 不建 AudioContext，但试听路径先 `attemptUnlock` 再进闸门（实测 contexts=1/nodes=0） | `:545-550` 文档 vs `:678-682`（`:680` 的 `attemptUnlock`）、闸门 `:564-568` | 音量 0 → 点「试听」→ `audio().state` 变为 running/suspended（无声、无节点） |
 | F3 | `enabled=false` 时试听不计数 `suppressedDisabled`，卡片无法解释"为什么没声" | `:678-682` 早退，不过 `:558-562` | 关开关 → `preview()` 返回 false 且 `stats().suppressedDisabled === 0` |
-| F4 | 浏览器半对名册 `name` 无 trim/长度收敛（纯空白名渲染成空行、5000 字原样） | `:654` | 手改 settings 文档 `custom[0].name = '   '` → 下拉首行看似空白 |
-| F5 | 宿主 120 字 `slice` 会切断代理对（实测末位 `U+D83D`） | `lib/index.js:399` | 文件名 119×`x` + `😀` + `tail.wav` → 返回名末位为孤立高代理 |
-| F6 | 客户端兜底名 `'audio'` 无扩展名必被宿主 415；尾随空格名同样 415 | `lib/client.js:524` vs `lib/index.js:406-413` | 空 `file.name` 或 `'padded.wav '` → 415 |
+| F4 | 浏览器侧对名册 `name` 无 trim/长度收敛（纯空白名渲染成空行、5000 字原样） | `:654` | 手改 settings 文档 `custom[0].name = '   '` → 下拉首行看似空白 |
+| F5 | DSH 120 字 `slice` 会切断代理对（实测末位 `U+D83D`） | `lib/index.js:399` | 文件名 119×`x` + `😀` + `tail.wav` → 返回名末位为孤立高代理 |
+| F6 | 客户端兜底名 `'audio'` 无扩展名必被 DSH 415；尾随空格名同样 415 | `lib/client.js:524` vs `lib/index.js:406-413` | 空 `file.name` 或 `'padded.wav '` → 415 |
 
 ### R4-RACE（low · 健壮性，我的补充）并发导入的 read-modify-write
 
@@ -305,9 +305,9 @@ select:not(:-internal-list-box)::picker(select) {
 
 - **上限语义（R4-CAP，我实测）**：`CUSTOM_LIMIT = 50`（`:105`）只在**渲染**时截断（`:647` 的 `roster.length < CUSTOM_LIMIT`）。实测第 51 次导入：文件上传成功、`custom` 落成 **51 项**、`tone` 也指向它，但下拉里的**真实名册行只有前 50 项**，被选中的第 51 项只能以卡片补的 `（文件缺失）` 合成行出现在第一位——**文件明明在，却被显示成"文件缺失"**，用户会以为导入失败。低风险（要导入 51 个文件才触发），建议：达到上限时拒绝并提示，或把上限也应用到写入。
 - **失败采样无负缓存**（报告 A/B 的 O1）：`samples.pending/ready` 失败后不记录 → 每次播放重新请求；对"文件已删但名册仍引用"的场景会产生一次性 404 请求，功能正确。
-- **大小写 id 死选项**（O2/D2）：`CUSTOM_ID` 带 `i`（`:96`）而宿主 `findAudioFile` 大小写敏感（`lib/index.js:352`）→ 大写 id 呈现为"（文件缺失）"；正常路径不可达（`randomUUID()` 恒小写）。
+- **大小写 id 死选项**（O2/D2）：`CUSTOM_ID` 带 `i`（`:96`）而 DSH `findAudioFile` 大小写敏感（`lib/index.js:352`）→ 大写 id 呈现为"（文件缺失）"；正常路径不可达（`randomUUID()` 恒小写）。
 - **`@supports` 未覆盖 `::picker()`**（O3）：若某浏览器支持 `appearance:base-select` 值但不支持该伪元素，3 行上限会静默丢失（不截断内容，只是不滚）；未观测到此类浏览器。
-- **宿主前缀扫描取文件**（D3，报告 A）：`audio/` 里若存在人工放入的 `<id>.aaa`，GET 会返回它、DELETE 会删它而留下真音频；杂散文件无法经 HTTP 写入，属防御性缺口。
+- **DSH 前缀扫描取文件**（D3，报告 A）：`audio/` 里若存在人工放入的 `<id>.aaa`，GET 会返回它、DELETE 会删它而留下真音频；杂散文件无法经 HTTP 写入，属防御性缺口。
 
 ---
 
@@ -359,8 +359,8 @@ Get-FileHash dsh-approval-chime/lib/client.js,dsh-approval-chime/lib/index.js -A
 | --- | --- | --- |
 | R5（本文判定 **PARTIAL/不达标**） | **已修**：`lib/client.js:1090` 在同一规则里显式声明 `box-sizing:content-box;max-height:84px`，行高 20+4+4=28px ⇒ 3 行 = 84px = 内容盒（不滚动），第 4 行 112px > 84px（滚动）；不再依赖 UA 盒模型。t4 独立探针 **69/69** 复现 | `docs/rev5-需求复审.md` §2 |
 | R5-1（本文 §5，medium） | **已修**（同上）。仍待真人浏览器确认滚动条的真实 used value/外观（非阻塞） | 同上 §5-M1/M2 |
-| D1（本文 §5，medium · 宿主 413） | **已修**：t4 用自写裸 socket 探针复现 content-length 与 chunked 两种写法都收到 `HTTP/1.1 413` + JSON，并同测正常上传往返与 `audio/` 零残留（**9/9**） | 同上 §0/§4.1 |
+| D1（本文 §5，medium · DSH 413） | **已修**：t4 用自写裸 socket 探针复现 content-length 与 chunked 两种写法都收到 `HTTP/1.1 413` + JSON，并同测正常上传往返与 `audio/` 零残留（**9/9**） | 同上 §0/§4.1 |
 | F1（本文 §5，medium） | **已修**：`loadSample`/`uploadAudio` 把同步抛错转成 rejection，`chime` 与导入路径各加兜底；t4 实测不抛异常、`suppressedFailed+1`、`lastError` 有值、按钮复位 | 同上 §4.1 |
 | F2–F6、D2–D4、R4-CAP、R4-RACE（low） | **已修**（逐条原始输出见 `docs/rev5-复验.md` §1；t4 复核认可） | `docs/rev5-复验.md` |
-| **EV-1**（本文 §3.1/§5：宿主报告 U1 的推断「`::picker` 保持初始 `content-box`」不成立） | **行为影响已消除**（rev-5 显式声明 `content-box`，旧的 `92px` 已不存在）；**但文本未更正**：`docs/rev4-独立验证.md:189` 仍写"所以 `::picker` 保持初始 `content-box`……当前不成立"（该文件 mtime 21:02，早于本文 21:10 的写作时间，此后未再编辑），建议补一行更正 | 同上 §4.4 |
+| **EV-1**（本文 §3.1/§5：DSH 报告 U1 的推断「`::picker` 保持初始 `content-box`」不成立） | **行为影响已消除**（rev-5 显式声明 `content-box`，旧的 `92px` 已不存在）；**但文本未更正**：`docs/rev4-独立验证.md:189` 仍写"所以 `::picker` 保持初始 `content-box`……当前不成立"（该文件 mtime 21:02，早于本文 21:10 的写作时间，此后未再编辑），建议补一行更正 | 同上 §4.4 |
 | 本文结论「**需修正**」 | **已被取代**：rev-5 的复审判定为 **可交付**（R1–R5 全部达标） | 同上 §7 |

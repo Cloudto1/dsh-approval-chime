@@ -111,8 +111,10 @@ report.same('the namespace matches dsh-settings:82-86 exactly', /^[a-z][a-z0-9-]
 
 const schema = plugin.buildSchema(syncLoad.z);
 report.same('the schema is an object schema', schema.type, 'object');
-report.deep('the schema resolves the documented defaults', schema({}), { enabled: true, volume: 70, tone: 'chime' });
-report.deep('the exported DEFAULTS match', { ...plugin.DEFAULTS }, { enabled: true, volume: 70, tone: 'chime' });
+/* rev-4 added the imported-tone roster, so the namespace's defaults carry `custom: []`
+ * (lib/index.js DEFAULTS). The four documented keys are still exactly these. */
+report.deep('the schema resolves the documented defaults (rev-4 adds the custom roster)', schema({}), { enabled: true, volume: 70, tone: 'chime', custom: [] });
+report.deep('the exported DEFAULTS match (rev-4 adds the custom roster)', { ...plugin.DEFAULTS }, { enabled: true, volume: 70, tone: 'chime', custom: [] });
 report.deep('the exported TONES match', [...plugin.TONES], ['chime', 'bell', 'beep']);
 const envelope = schema.toJSON();
 report.check('the schema exposes the describe() envelope', Array.isArray(envelope.refs) === false && typeof envelope === 'object' && envelope.refs !== undefined, JSON.stringify(envelope).slice(0, 200));
@@ -141,12 +143,22 @@ report.check(
 
 report.group('b2. the module has no static dependency that could break the loader entry');
 const topLevelImports = HOST_SOURCE.split('\n').filter((line) => /^import\s/.test(line));
+/* rev-4 added the audio store (node:fs/promises, node:crypto, node:path's extname) and
+ * rev-10 the per-session table (node:url's fileURLToPath); every one of them is still a
+ * node: builtin — schemastery alone stays behind the lazy createRequire in `resolver`. */
 report.deep('every top-level import is a node: builtin', topLevelImports.map((line) => line.trim()), [
+  "import { randomUUID } from 'node:crypto';",
+  "import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';",
   "import { createRequire } from 'node:module';",
   "import { homedir } from 'node:os';",
-  "import { join } from 'node:path';",
-  "import { pathToFileURL } from 'node:url';",
+  "import { extname, join } from 'node:path';",
+  "import { fileURLToPath, pathToFileURL } from 'node:url';",
 ]);
+report.check(
+  'every top-level import specifier is a node: builtin (re-derived, not just listed)',
+  topLevelImports.every((line) => /from 'node:[a-z/]+';/.test(line)),
+  topLevelImports.map((line) => line.trim()).join(' | '),
+);
 report.check('no static schemastery import', !/^import\s+[^;]*schemastery/m.test(HOST_SOURCE), 'a missing link cannot break the boot');
 
 /* ------------------------------------------------------- (c) degradation matrix */

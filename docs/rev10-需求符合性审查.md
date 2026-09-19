@@ -8,7 +8,7 @@
 > 用户拍板的四条（①A 语义 / ②B 落点 / ③小铃铛 / 「每个会话声音独立」的三项）**逐条都有我本人复跑出来的正面证据**，
 > 零回退与文档-字节一致也成立（五条 acceptance 里四条完全成立）；
 > 但**第 ①A 条不能无条件判定成立**：铃铛的写入路径存在一个**实测、可复现**的应答乱序窗口
-> （`F-01`，medium），窗口内本地表会与宿主文件相反、且**直到刷新页面都没有收敛路径**——
+> （`F-01`，medium），窗口内本地表会与 DSH 文件相反、且**直到刷新页面都没有收敛路径**——
 > 而逐点核对"①A 全成立"正是本合同的门槛，故本轮**不予背书**。
 > 另有一条**验证基础设施**层面的 low 发现（`F-02`：重新基线化后 probe-10/probe-16 的"没有任何请求"断言字面已不成立）。
 >
@@ -23,9 +23,9 @@
 
 | # | acceptance | 判定 | 主证（我本人复跑/亲读） |
 | --- | --- | --- | --- |
-| 1 | ①A 语义：默认跟随全局 / 关一个只影响那一个 / 开回来=真回到跟随全局（不是写 true）/ 全局关时未覆盖会话静默 / 新会话天然跟随 | **不成立（仅因 F-01）** | 正面：`lib/client.js:983-1004`（`覆盖 ?? 全局`）、`:1181-1184`（只写 `false`/`null`）、我自己的宿主探针 3b/3f/4a/4c/4d；反面：`lib/client.js:1153-1178` 的应答乱序窗口（F-01） |
-| 2 | ②B 落点：插件自己的文件、原子写、设置文档无会话数据、无浏览器存储、200 条按 updatedAt 淘汰 | **成立** | 我自己的宿主探针 48/48（§3.2）；`lib/index.js:163-171/740-747/787-798/884-902`；`settings.yaml` 实测无会话数据；`lib/**` 无 `localStorage/sessionStorage/indexedDB/caches./document.cookie` |
-| 3 | ③ 小铃铛：槽位在会话头部标题旁、与既有占用者共存、两态图标、中英双语 title/aria-label、点击语义与 ①A 一致 | **成立** | 宿主契约实测（`dsh-cordis-client-runner/lib/client.js:3102-3156`）；`client-half` 517-548/558-561；`probe-18` 日志 7-23/35-40 行 |
+| 1 | ①A 语义：默认跟随全局 / 关一个只影响那一个 / 开回来=真回到跟随全局（不是写 true）/ 全局关时未覆盖会话静默 / 新会话天然跟随 | **不成立（仅因 F-01）** | 正面：`lib/client.js:983-1004`（`覆盖 ?? 全局`）、`:1181-1184`（只写 `false`/`null`）、我自己的 DSH 探针 3b/3f/4a/4c/4d；反面：`lib/client.js:1153-1178` 的应答乱序窗口（F-01） |
+| 2 | ②B 落点：插件自己的文件、原子写、设置文档无会话数据、无浏览器存储、200 条按 updatedAt 淘汰 | **成立** | 我自己的 DSH 探针 48/48（§3.2）；`lib/index.js:163-171/740-747/787-798/884-902`；`settings.yaml` 实测无会话数据；`lib/**` 无 `localStorage/sessionStorage/indexedDB/caches./document.cookie` |
+| 3 | ③ 小铃铛：槽位在会话头部标题旁、与既有占用者共存、两态图标、中英双语 title/aria-label、点击语义与 ①A 一致 | **成立** | DSH 契约实测（`dsh-cordis-client-runner/lib/client.js:3102-3156`）；`client-half` 517-548/558-561；`probe-18` 日志 7-23/35-40 行 |
 | 4 | 每会话声音独立：同批各响各的（顺序+间隔）/ 每会话可覆盖音色音量、缺省继承 / 缺失自定义音色回退全局 | **成立** | `client-half` 766-812（4 条 pending → 3 响、180 ms、各自音量、静音计数）；`probe-18` 日志 68-78 行；`client-half` 738-762 |
 | 5 | 零回退 + 文档与字节一致：全局设置页未受影响 / REVISION=rev-10 且诊断既有键未删 / 文档与磁盘 sha256 一致 / 未证实项如实标注 | **成立** | 四套 harness 502/502（我复跑）；诊断键 18→25 **零删除**（我直接对 HEAD 字节比对）；CHANGELOG:61-62 与实测 sha256 一致；README §9 H14-H18 + `docs/rev10-独立验证.md` §11 |
 
@@ -54,16 +54,16 @@ F-01 的**最小修法**（不是重做需求）见 §5.1；其余部分**可交
 | --- | --- | --- |
 | 1 | `node verify/host-half.test.mjs` / `client-half` / `waterfall` / `custom-audio` | 124/124、282/282、22/22、74/74，**合计 502/502，四个 exit=0** |
 | 2 | `cd verify-independent && node probe-18-r10-sessions.mjs` | `assertions passed=130 failed=0`，exit 0（与 t2 的 130/0 一致） |
-| 3 | `node .scratch/reviewer-r10/host-sessions-probe.mjs`（**我自己写的**宿主探针：真 `lib/index.js` + 真 HTTP + scratch `$DSH_HOME`） | **48 assertions passed=0 failed**（§3.2 全表） |
+| 3 | `node .scratch/reviewer-r10/host-sessions-probe.mjs`（**我自己写的**DSH 探针：真 `lib/index.js` + 真 HTTP + scratch `$DSH_HOME`） | **48 assertions passed=0 failed**（§3.2 全表） |
 | 4 | `node .scratch/reviewer-r10/diagnostics-keys.mjs`（对 `HEAD:lib/client.js` 与当前字节比对诊断键） | rev-9 的 18 键**一个未删**，新增 7 键（`sessionSlot`/`sessionAction`/`batchGapMs`/`sessions`/`sessionSettings`/`toggleSession`/`refreshSessions`） |
-| 5 | `node .scratch/reviewer-r10/probe-18-gap.mjs --race-rounds=400 --race-raw --click-gap=<0,5,20,60,150,400>`（probe-18 的**副本**，只加"两次点击之间真等 N ms"） | §5.2 表：gap=0 时宿主文件 201/400 轮停在"静音"、客户端 0/400 分歧；**gap≥5 ms 全部 0/400** |
+| 5 | `node .scratch/reviewer-r10/probe-18-gap.mjs --race-rounds=400 --race-raw --click-gap=<0,5,20,60,150,400>`（probe-18 的**副本**，只加"两次点击之间真等 N ms"） | §5.2 表：gap=0 时 DSH 文件 201/400 轮停在"静音"、客户端 0/400 分歧；**gap≥5 ms 全部 0/400** |
 | 6 | `node .scratch/reviewer-r10/post-latency.mjs` | 每会话 POST 往返（本机 loopback，n=200）：min 2.03 / median 3.33 / p90 4.36 / **p99 6.81** / max 24.90 ms |
 | 7 | `node --input-type=module -e "…DSH_HOME='   '; USERPROFILE=…"` | 纯空白 `$DSH_HOME` → `C:\Users\fake-home-for-review\.dsh\approval-chime\sessions.json`；设了值 → `D:\real-home\approval-chime\sessions.json` |
 | 8 | 对 `lib/**` 全文 grep `localStorage|sessionStorage|indexedDB|caches.|document.cookie|window.name|cookieStore` | **0 命中** |
 | 9 | 读活体设置文档 `~/.dsh/settings.yaml`（`$DSH_HOME` 实测 = `~/.dsh`） | `approval-chime: { volume: 50, tone: chime, enabled: true }` —— **只有三个全局键，没有任何会话数据** |
-| 10 | 读宿主契约源码（只读）：`dsh-cordis-client-runner/lib/client.js:3102-3156`、`dsh-client-ui-agent-preset:1475-1477`、`dsh-client-ui-schedule:294-296`、`dsh-client-ui-jobs:267-269` | 槽是 `list`/`session`、"Title-adjacent"；id 必填且**新 id 是"增添"、复用官方 id 才是"顶替"**；`standardProps` 含 `sessionId`；已装占用者 order = **-10 / 10 / 20**，本插件 30 在它们之后；`agent-team` 包本机**不存在**（0 命中） |
+| 10 | 读 DSH 契约源码（只读）：`dsh-cordis-client-runner/lib/client.js:3102-3156`、`dsh-client-ui-agent-preset:1475-1477`、`dsh-client-ui-schedule:294-296`、`dsh-client-ui-jobs:267-269` | 槽是 `list`/`session`、"Title-adjacent"；id 必填且**新 id 是"增添"、复用官方 id 才是"顶替"**；`standardProps` 含 `sessionId`；已装占用者 order = **-10 / 10 / 20**，本插件 30 在它们之后；`agent-team` 包本机**不存在**（0 命中） |
 | 11 | `git diff -U0 -- verify/` 逐行核对"既有断言一条未删" | 被删的 7 行断言**每一条都有同名/同主题的替换**，且多为**更强**（按槽名过滤而非数总数）；另有 4 行非断言改动（helper 形参、2 个 const、import 增补）→ §6 OBS-1 |
-| 12 | 试图对真实 `dsh web` 发 `GET http://127.0.0.1:3080/api/approval-chime/sessions` | **401**（平台鉴权在路由之前），无法据此判定线上宿主半的新旧 → 仍列"未证实"（§7） |
+| 12 | 试图对真实 `dsh web` 发 `GET http://127.0.0.1:3080/api/approval-chime/sessions` | **401**（平台鉴权在路由之前），无法据此判定线上 DSH 侧的新旧 → 仍列"未证实"（§7） |
 
 ---
 
@@ -74,14 +74,14 @@ F-01 的**最小修法**（不是重做需求）见 §5.1；其余部分**可交
 | 要证的事 | 证据 |
 | --- | --- |
 | 默认跟随全局（新会话无需任何动作） | `lib/client.js:983-990`：`enabled = record?.enabled ?? globals.enabled`（volume/tone 同构）。断言：`client-half:703-706`（未覆盖 → 三字段都等于全局）、`:544`（无记录的会话铃铛是"开"）、`probe-18` 日志 54 行 D1 |
-| 关掉一个只影响那一个 | 我自己的宿主探针 **3b**（文件里只有 `session-A` 一条）、**3f**（再关 B，A/B 都在，C 无记录）；`client-half:569`（"the bells of the other sessions are unaffected"）、`probe-18` 日志 47-48 行 C6/C6b（只静音 A，A 不响、B 照响，chime 里只有 B） |
-| 开回来 = 真回到「跟随全局」 | `lib/client.js:1181-1184`：`view.enabled === true ? { enabled: false } : { enabled: null }` —— **只可能写 false 或 null**；`lib/index.js:928-931`：清空后的记录被删除（不落盘空行）。我自己的宿主探针 **4a**（记录消失）、**4c**（磁盘上只剩 B）、**4d**（文件里从不出现 `"enabled":true`）；`client-half:732` 直接断言这条源码串，`:580` 断言"可听回来了"；`probe-18` 日志 38-40 行 C2/C2b/C2c |
+| 关掉一个只影响那一个 | 我自己的 DSH 探针 **3b**（文件里只有 `session-A` 一条）、**3f**（再关 B，A/B 都在，C 无记录）；`client-half:569`（"the bells of the other sessions are unaffected"）、`probe-18` 日志 47-48 行 C6/C6b（只静音 A，A 不响、B 照响，chime 里只有 B） |
+| 开回来 = 真回到「跟随全局」 | `lib/client.js:1181-1184`：`view.enabled === true ? { enabled: false } : { enabled: null }` —— **只可能写 false 或 null**；`lib/index.js:928-931`：清空后的记录被删除（不落盘空行）。我自己的 DSH 探针 **4a**（记录消失）、**4c**（磁盘上只剩 B）、**4d**（文件里从不出现 `"enabled":true`）；`client-half:732` 直接断言这条源码串，`:580` 断言"可听回来了"；`probe-18` 日志 38-40 行 C2/C2b/C2c |
 | 全局关掉 → 所有未覆盖会话静默 | `client-half:726-728`（未覆盖/仅音色/仅音量的会话全部 `enabled=false`）、`:736`（全局重新打开后恢复）；`probe-18` 日志 55/57-58/61 行 D2/D4/D8；`:1294-1301` 被本会话静音计 `suppressedSession`、被全局关闭计 `suppressedDisabled`（`probe-18` 日志 78 行 E10） |
 | 不是三态、不是全局开关的复制品 | `client.js:2273-2278`（注释与实现都只有"两态 + 无 force-on"）；`probe-18` 日志 43 行 C3（点铃铛 `scope.sets=[]`，**全局设置一个字没动**） |
 
 ### 3.2 ②B 落点（用户原话「插件自己存一个小文件」）
 
-我自己的宿主探针（`.scratch/reviewer-r10/host-sessions-probe.txt`，**48/48**）逐条：
+我自己的 DSH 探针（`.scratch/reviewer-r10/host-sessions-probe.txt`，**48/48**）逐条：
 
 ```
 ok 0a.sessions-file-under-DSH_HOME   :: <scratch>\approval-chime\sessions.json
@@ -167,12 +167,12 @@ ok 10a/10b 整个 scratch home 里只多了 approval-chime/sessions.json
 ### F-01（medium · 阻断本次"①A 全成立"的盖章）
 
 * **file / line**：`lib/client.js:1153`（`writeSessionPatch`；相关行 `:1160-1168` 成功分支、`:1163` 记 `revision` 但从不比较、`:2739` 唯一的挂载期 `refreshSessions()`、`:983-1004` 这条本地表驱动铃铛与响铃判定）
-* **problem**：每次 POST 的应答都**无条件**覆盖本地表，而两次并发 POST 走两条 socket，应答体被消费的顺序不保证等于宿主 `rename` 的落地顺序。于是存在一个实测状态：**铃铛显示"开"（本地表无记录）而宿主文件是 `{enabled:false}`**，即"这个会话会响"是假的；这个不一致还会驱动该会话的响铃判断（`:983-1004`），且**没有任何收敛路径**（`refreshSessions()` 只在 `:2739` 挂载时调一次），一直持续到刷新页面。同一窗口的另一半更常见：**用户第二次点击（想开回来）会被丢弃**——gap=0 的 400 轮里宿主文件有 **201 轮停在"静音"**。
+* **problem**：每次 POST 的应答都**无条件**覆盖本地表，而两次并发 POST 走两条 socket，应答体被消费的顺序不保证等于 DSH `rename` 的落地顺序。于是存在一个实测状态：**铃铛显示"开"（本地表无记录）而 DSH 文件是 `{enabled:false}`**，即"这个会话会响"是假的；这个不一致还会驱动该会话的响铃判断（`:983-1004`），且**没有任何收敛路径**（`refreshSessions()` 只在 `:2739` 挂载时调一次），一直持续到刷新页面。同一窗口的另一半更常见：**用户第二次点击（想开回来）会被丢弃**——gap=0 的 400 轮里 DSH 文件有 **201 轮停在"静音"**。
   * 复现证据（t2，独立于实现）：`verify-independent/_raw/r10-ind-probe-18-race-evidence.txt:7`（1200 轮 1 例，round=320：patch 对正确、本地 159 条/文件 160 条，与 200 上限无关）；构造式反证 `r10-ind-probe-18-r10-sessions.txt:150`（I2：迟到应答把已恢复的 `true` 又打回 `false`）。
   * 根因与"为什么 revision 栅栏不够"：`docs/rev10-独立验证.md:224-258`。
 * **为什么它阻断**：合同要求"①A 语义成立……把它开回来是真的回到「跟随全局」"逐条成立才 pass。上面那个状态里，"开回来"**在效果上不成立**、且 UI 会就"这个会话会不会响"给出错误答案；这属于团队从 rev-4 起就在收的"UI 显示与真实状态不一致"同一族（对照 `docs/rev4-需求符合性审查.md:297-302` 的 R4-RACE，当时判 low、rev-5 仍然修掉了）。
 * **可达性上界（我自己量的，一并交给 captain 判断）**：窗口 = 第二次点击落在"第一次 POST 未落地"之内。本机每会话 POST 往返 n=200：median **3.33 ms**、p90 4.36 ms、p99 6.81 ms、max 24.90 ms；把两次点击拉开 ≥5 ms 后，**6 个间隔 ×400 轮 = 2400 轮全部 0 分歧、0 丢点击**（§5.2）。也就是说：**两次人手分别点击（≥40 ms）打不中这个窗口**；能打中的只剩"主线程被长任务阻塞后，两个 click 事件在同一个事件突发里被连着派发"这条路——而这条路**在无浏览器引擎的沙箱里我无法否证**，按合同"未证实不得背书"，我不能给 ①A 盖章。
-* **requiredFix（最小、局部）**：二选一 —— ①**同一 `sessionId` 的写入串行化**（至多一个 POST 在飞，后到的点击排队/合并），或 ②**最后一个未决写入落定后重读一次表**（`refreshSessions()`），让本地表最终等于宿主文件。**不要只加 `revision >` 栅栏**：应答被反序投递时它会接受旧表、跳过新表（`probe-18` I2 已把这条写进探针注解 `r10-ind-probe-18-r10-sessions.txt:152-155`）。
+* **requiredFix（最小、局部）**：二选一 —— ①**同一 `sessionId` 的写入串行化**（至多一个 POST 在飞，后到的点击排队/合并），或 ②**最后一个未决写入落定后重读一次表**（`refreshSessions()`），让本地表最终等于 DSH 文件。**不要只加 `revision >` 栅栏**：应答被反序投递时它会接受旧表、跳过新表（`probe-18` I2 已把这条写进探针注解 `r10-ind-probe-18-r10-sessions.txt:152-155`）。
 * **修完的复核要求**：`probe-18 --race-rounds=1500 --race-raw` 与 `--race-sidechannel` 两路必须 0 分歧（且 I2 这条"构造式反证"要改成"迟到应答不再回退"），四套 harness 仍需 502/502。
 
 ### F-02（low · 验证基础设施；本身不阻断，但按 captain 要求报出）
@@ -200,7 +200,7 @@ ok 10a/10b 整个 scratch home 里只多了 approval-chime/sessions.json
 | 真实浏览器里铃铛的渲染/尺寸/`hover` 提示的实际弹出 | 无浏览器引擎（`r10-ind-probe-13-r4-browser.txt` 11/14，Edge 启动即 fatal）；只能证到元素树/属性层（`probe-18` B1-B8g） |
 | popover 的实际定位与遮挡（贴底向上翻、水平收进视口、会不会被带 `transform` 的祖先裁剪） | 同上；只证到 `position:fixed`、矩形来自 `getBoundingClientRect`、Escape/外部 pointerdown 会关（`probe-18` 26-32 行） |
 | `order:30` 的**视觉**落点 | 本机 `agent-team` 包 0 命中（我复核），只能证"已装占用者 -10/10/20、30 与它们都不等且在之后" |
-| 真实 `dsh web` 端到端（页面 → 铃铛 → 点击 → 落盘 → 刷新读回） | 需要真浏览器 + 已挂载 profile。我**尝试**过对 `http://127.0.0.1:3080/api/approval-chime/sessions` 发 GET：**401**（平台鉴权在路由之前），无法据此判定线上宿主半的新旧；本报告的端到端只到"真字节 ⇄ 真 HTTP ⇄ 真 `lib/index.js` ⇄ 真文件"为止 |
+| 真实 `dsh web` 端到端（页面 → 铃铛 → 点击 → 落盘 → 刷新读回） | 需要真浏览器 + 已挂载 profile。我**尝试**过对 `http://127.0.0.1:3080/api/approval-chime/sessions` 发 GET：**401**（平台鉴权在路由之前），无法据此判定线上 DSH 侧的新旧；本报告的端到端只到"真字节 ⇄ 真 HTTP ⇄ 真 `lib/index.js` ⇄ 真文件"为止 |
 | F-01 窗口在**真机浏览器事件派发**下的可达性 | 无浏览器；我只能给"间隔 ≥5 ms → 2400 轮全对"这个上界，不能否证"长任务阻塞后两个 click 同突发派发"。**这正是 ①A 不予盖章的原因** |
 
 ---
@@ -213,9 +213,9 @@ cd '<workspace>\dsh-approval-chime'
 foreach ($s in 'host-half','client-half','waterfall','custom-audio') { node "verify\$s.test.mjs" }
 # 2) t2 的独立探针（期望 assertions passed=130 failed=0）+ 只读的 8 变异体
 cd verify-independent; node probe-18-r10-sessions.mjs; node probe-18-r10-sessions.mjs --mutate=all
-# 3) 我自己的宿主探针（期望 48/0：落点/原子写/上限/400/500/回退全局）
+# 3) 我自己的 DSH 探针（期望 48/0：落点/原子写/上限/400/500/回退全局）
 cd ../..; node .scratch/reviewer-r10/host-sessions-probe.mjs
-# 4) F-01 的可达性曲线（gap=0 会看到宿主流失点击；gap>=5ms 期望 0/400）
+# 4) F-01 的可达性曲线（gap=0 会看到 DSH 流失点击；gap>=5ms 期望 0/400）
 node .scratch/reviewer-r10/make-gap-probe.mjs
 cd dsh-approval-chime/verify-independent
 foreach ($g in 0,5,20,60,150,400) { node '..\..\.scratch\reviewer-r10\probe-18-gap.mjs' --race-rounds=400 --race-raw "--click-gap=$g" | Select-String 'I1' }
@@ -226,7 +226,7 @@ foreach ($g in 0,5,20,60,150,400) { node '..\..\.scratch\reviewer-r10\probe-18-g
 ## 9. 本次审查做了什么、没做什么
 
 * **只读**：`lib/**`、`verify/**`、`verify-independent/**`、`README.md`、`CHANGELOG.md` 一个字节都没改（`git status --porcelain` 里这些文件的状态与 t1/t2 交付时相同）；
-  宿主契约/`dsh-home-paths` 只读引用。
+  DSH 契约/`dsh-home-paths` 只读引用。
 * **新增**：本文件（唯一交付物）+ `.scratch/reviewer-r10/`（3 个取证脚本 + 日志：`host-sessions-probe.{mjs,txt}`、`probe-18-gap.mjs` + `gap-*.txt`、`post-latency.mjs`、`diagnostics-keys.mjs`，以及从 `HEAD` 导出的 rev-9 字节副本用于对比），供复核。
 * **依赖的他人证据**（我复跑过或逐行读过，均标注了来源）：t1 的实施说明与 `CHANGELOG`、t2 的 `docs/rev10-独立验证.md` 与 `verify-independent/_raw/r10-*.txt`。
 * **裁决权说明**：F-01 是"能不能给 ①A 盖章"的问题，不是"需求做错了"的问题；若 captain 判断该窗口可以按"已复现残留 + README H17 已披露"接受并交付，请以书面理由覆盖本裁定（本报告的可达性数据已备好供其引用）；本审查只负责按合同的 pass 门槛给出结论。

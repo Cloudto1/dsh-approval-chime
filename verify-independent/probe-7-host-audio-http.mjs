@@ -400,7 +400,14 @@ async function nameMatrix() {
     ['a.mp3.exe', 415, null],
     ['a', 415, null],
     ['', 415, null],
-    ['.mp3', 415, null],
+    // rev-5 (F6) rebaseline: two names that used to be refused are accepted now.
+    //   * `.mp3` — the extension is derived from the LAST dot, not from path.extname
+    //     (lib/index.js:471-474), so a leading-dot name still advertises mp3.
+    //   * `payload.mp3%20` — the name is trimmed before the extension is derived
+    //     (lib/index.js:574), so the trailing space no longer hides the extension.
+    // Both are stored as mp3 and echoed with the cleaned display name; the DELETE that
+    // follows a 200 then restores audio/ to its baseline (section 7).
+    ['.mp3', 200, '.mp3'],
     ['a.', 415, null],
     ['a.mp3.', 415, null],
     ['%00a%01.mp3', 200, 'a.mp3'],
@@ -409,7 +416,7 @@ async function nameMatrix() {
     ['%20%20.mp3', 200, '.mp3'],
     ['%ZZ.mp3', 200, '%ZZ.mp3'],
     [`${'x'.repeat(5000)}.mp3`, 200, null],
-    ['payload.mp3%20', 415, null],
+    ['payload.mp3%20', 200, 'payload.mp3'],
     ['notes.txt', 415, null],
     ['archive.zip', 415, null],
     ['trailing%20space%20.mp3', 200, 'trailing space .mp3'],

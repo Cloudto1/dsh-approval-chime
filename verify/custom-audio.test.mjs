@@ -264,7 +264,7 @@ const harness = createClientCtx({
 contract.apply(harness.ctx);
 const diagnostics = sandbox.context.window.__DSH_APPROVAL_CHIME__;
 report.ok('the diagnostics surface is installed', diagnostics !== undefined && diagnostics !== null);
-report.ok('the revision names this build', String(diagnostics.revision).includes('rev-11'), String(diagnostics.revision));
+report.ok('the revision names this build', String(diagnostics.revision).includes('rev-20'), String(diagnostics.revision));
 report.deepEqual(
   'option order is imports (in order, deduplicated) then built-ins',
   diagnostics.toneOptions(),
@@ -306,7 +306,14 @@ const styleText = styleTag === undefined ? '' : String(styleTag.textContent);
 // 3 rows exactly: the UA stylesheet makes ::picker(select) border-box, so the content
 // box must be stated as content-box for `max-height` to mean three rows and nothing else
 // (the previous 92px/border-box pair left 82px and clipped the third row — R5-1).
-report.ok('the popup is capped at exactly three rows', styleText.includes('box-sizing:content-box;max-height:84px'), 'box-sizing:content-box;max-height:84px');
+// rev-12 split the two properties across two rules (the row cap is now per list: the
+// session popover shows four), so this reads them apart — both are still required.
+report.ok('the popup still pins its content box (R5-1)', styleText.includes('box-sizing:content-box'), 'box-sizing:content-box');
+report.ok(
+  'the popup is still capped at exactly three rows (R5-1)',
+  styleText.includes(`.dacCard select::picker(select){max-height:${diagnostics.pickerMetrics.cardMaxPx}px;}`),
+  `max-height:${diagnostics.pickerMetrics.cardMaxPx}px`,
+);
 report.ok('the popup scrolls vertically', styleText.includes('overflow-y:auto'));
 report.ok('the file input is hidden', styleText.includes('.dacFile{display:none;}'));
 report.ok('the popup keeps its rounded corners', styleText.includes('border-radius:10px'));

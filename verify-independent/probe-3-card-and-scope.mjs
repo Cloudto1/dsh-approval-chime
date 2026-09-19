@@ -56,6 +56,17 @@ const harness = makeCtx();
 bundle.contract.apply(harness.ctx);
 const diagnostics = bundle.diagnostics();
 
+/**
+ * rev-7 moved the settings entry out of `settings.plugin.item` into a section row of
+ * its own (`settings.section`, lib/client.js:3023), keyed by a private `id` instead of
+ * the old keyed-card `key` (lib/client.js:3027); rev-10 added the session-header bell
+ * as a SECOND registration (`conversation.session.header.actions`, lib/client.js:3048).
+ * The kit's SLOT constant still names the rev-1..rev-6 slot and is shared with probe-17,
+ * so the rev-15 slot names are declared here rather than rewritten in the kit.
+ */
+const SECTION_SLOT = 'settings.section';
+const SESSION_SLOT = 'conversation.session.header.actions';
+
 /* --------------------------------------------------- (a) four-way key agreement */
 
 report.group('a. the slot key, the scope namespace and the Host namespace agree');
@@ -63,19 +74,23 @@ report.group('a. the slot key, the scope namespace and the Host namespace agree'
 report.same('the Host half registered exactly one namespace', hostRegistrations.length, 1);
 report.same('the Host namespace', hostRegistrations[0]?.ns, 'approval-chime');
 report.same('the Host namespace equals the module constant', hostRegistrations[0]?.ns, NS);
-report.deep('the Host schema defaults', hostRegistrations[0]?.defaults, { enabled: true, volume: 70, tone: 'chime' });
+report.deep('the Host schema defaults', hostRegistrations[0]?.defaults, { enabled: true, volume: 70, tone: 'chime', custom: [] });
 report.same('the Host registration applies live', hostRegistrations[0]?.options?.applies, 'live');
 
 report.deep('the browser half bound exactly one settings scope', harness.log.boundSpecs, [{ namespace: NS }]);
-report.deep('the browser half waited for the settings.plugin.item slot', harness.log.slotInjects, [SLOT]);
-report.same('exactly one card was registered', harness.log.slotRegistrations.length, 1);
+report.deep(
+  'the browser half waited for the settings.section slot (rev-7) and the session bell slot (rev-10)',
+  harness.log.slotInjects,
+  [SECTION_SLOT, SESSION_SLOT],
+);
+report.same('exactly two entries are registered (the section page and the header bell)', harness.log.slotRegistrations.length, 2);
 
 const card = harness.log.slotRegistrations[0];
-report.same('the card slot name', card?.entry?.name, 'settings.plugin.item');
-report.same('the card key IS the Host settings namespace', card?.entry?.key, hostRegistrations[0]?.ns);
+report.same('the card slot name (rev-7: its own settings.section row, not a keyed card)', card?.entry?.name, SECTION_SLOT);
+report.same('the card id IS the Host settings namespace (the pre-rev-7 `key` field is gone)', card?.entry?.id, hostRegistrations[0]?.ns);
 report.same('the card locale namespace is the same string', card?.entry?.locale, hostRegistrations[0]?.ns);
 report.same('the diagnostics surface reports the same namespace', diagnostics.namespace, hostRegistrations[0]?.ns);
-report.same('the diagnostics surface reports the same slot', diagnostics.slot, SLOT);
+report.same('the diagnostics surface reports the same slot', diagnostics.slot, SECTION_SLOT);
 report.check('the card entry is a function component', typeof card?.component === 'function', typeof card?.component);
 report.same('one locale dictionary was registered under that namespace', harness.log.localeRegistrations[0]?.ns, NS);
 report.check(
@@ -110,8 +125,8 @@ report.check('a reset button exists', buttonWith('恢复默认') !== undefined);
 report.check('the slider is enabled while the scope is writable', slider().props.disabled !== true);
 report.check('the card displays the bundle revision stamp', allText(view.tree).includes(diagnostics.revision), diagnostics.revision);
 report.check(
-  'the bundled zh copy is used when the platform hands no translator',
-  allText(view.tree).includes('审批提示音') && allText(view.tree).includes('音量'),
+  'the bundled zh copy is used when the platform hands no translator (rev-7 renamed the page to 通知提醒)',
+  allText(view.tree).includes('通知提醒') && allText(view.tree).includes('音量'),
   allText(view.tree).slice(0, 150),
 );
 

@@ -35,6 +35,29 @@
  *   - rev-11: two clicks of one session whose POST answers are released OUT OF ORDER
  *     still converge — the local table ends equal to the store stub's content, so the
  *     bell can no longer disagree with the file (the rev-10 review's F-01);
+ *   - rev-12: the two tone lists — the settings card's and the session popover's —
+ *     come out of ONE set of `::picker(select)` declarations, so the JS bundle hands
+ *     the browser two menus that differ only in how many rows they show before they
+ *     scroll (the popover's four default rows vs the card's three);
+ *   - rev-15 (OBS-A): a convergence re-read that FAILS keeps the last known per-session
+ *     table — a mute the user set survives a transient failure, the reason lands on the
+ *     popover's existing error row, the still-muted session stays silent, and the next
+ *     read that lands converges the table onto the Host file again;
+ *   - rev-18: the caret's turn moved 160 ms → 300 ms — rev-17's 160 ms justified only
+ *     this file's own `.18s` transitions, and the user's device read that as an instant
+ *     cut ("要有过渡动画能看到在转动的箭头"). The console surface also answers
+ *     `reduceMotion()`, read live on every call, so "the animation is too fast to see" can
+ *     be told apart from "this environment deliberately asks for no motion at all";
+ *   - rev-19: the caret's turn moved 300 ms → 400 ms — the same device reading that
+ *     produced rev-18 said the 300 ms turn was still an instant cut, so the constant
+ *     moved again. The stylesheet still CONCATENATES that number from the constant instead of
+ *     copying it, and exactly ONE caret transition rule existed;
+ *   - rev-20: the turn is 160 ms again (user request: "动画效果打开有效果，不过我要的是开不开都
+ *     是能有动画的，把动画时长改回 160ms。") and BOTH reduced-motion media blocks are DELETED —
+ *     the caret's own override was the real reason no duration was ever played on the reporting
+ *     device, whose system asks for reduced motion. It is a deliberate trade-off and it is
+ *     recorded as one next to the constant: this micro-interaction no longer distinguishes
+ *     environments, so it must not be quoted as an accessibility policy;
  *   - the AudioContext unlocks on the first user gesture and every failure mode
  *     (no WebAudio, suspended context, unresolvable plugin service) degrades
  *     without an uncaught exception or an unhandled rejection.
@@ -173,6 +196,77 @@ function outOfOrderStore(initial = {}) {
   return { store, held, posts, fetch: fetchStub, reads: () => reads, snapshot };
 }
 
+/**
+ * A per-session store stub whose READS can be broken on demand (rev-15, OBS-A). The
+ * mount read answers normally; then `breakWith('http-error')` makes every later GET answer
+ * a non-OK status (the shape that used to wipe the local table), `breakWith('reject')` makes
+ * it reject the way a dead socket does, and `heal()` lets the next read land again. POST
+ * always lands, so "the mute reached the Host" and "the convergence re-read failed" stay
+ * two independent, controllable facts. `onRead`, when set, fires as each GET is ISSUED —
+ * that is the only place from outside the bundle where the LOCAL table can be observed in
+ * the instant before the read that fails (the assertion "field-for-field equal to the table
+ * from BEFORE the failure" needs exactly that observation).
+ */
+function flakyReadStore(initial = {}) {
+  const table = JSON.parse(JSON.stringify(initial));
+  const calls = [];
+  let reads = 0;
+  let mode = 'ok';
+  const answer = () => ({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, revision: reads, sessions: table }) });
+  const api = {
+    calls,
+    table,
+    snapshot: () => JSON.parse(JSON.stringify(table)),
+    reads: () => reads,
+    posts: () => calls.filter((call) => call.options.method === 'POST'),
+    onRead: null,
+    breakWith: (how) => {
+      mode = how;
+    },
+    heal: () => {
+      mode = 'ok';
+    },
+  };
+  api.fetch = (url, options) => {
+    const call = { url, options: options ?? {} };
+    calls.push(call);
+    if (call.options.method === 'POST') {
+      const body = JSON.parse(call.options.body);
+      const record = { ...(table[body.sessionId] ?? {}) };
+      for (const [field, value] of Object.entries(body.patch)) {
+        if (value === null) delete record[field];
+        else record[field] = value;
+      }
+      // Same rule as the route: a record is dropped when no OVERRIDE field is left.
+      const empty = ['enabled', 'volume', 'tone'].every((field) => record[field] === undefined);
+      if (empty) delete table[body.sessionId];
+      else {
+        record.updatedAt = Date.now();
+        table[body.sessionId] = record;
+      }
+      return Promise.resolve(answer());
+    }
+    reads += 1;
+    if (typeof api.onRead === 'function') api.onRead();
+    if (mode === 'http-error') return Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({ ok: false, error: 'the store is unreachable' }) });
+    if (mode === 'reject') return Promise.reject(new Error('network down'));
+    return Promise.resolve(answer());
+  };
+  return api;
+}
+
+/** Field-by-field shape of a table: ids sorted, each record's fields sorted by name. */
+function fieldWise(table) {
+  return Object.keys(table)
+    .sort()
+    .map((id) => [
+      id,
+      Object.keys(table[id])
+        .sort()
+        .map((field) => [field, table[id][field]]),
+    ]);
+}
+
 /* ------------------------------------------------------------- 1. bundle shape */
 
 report.section('bundle shape (classic script, module id, factory contract)');
@@ -275,7 +369,7 @@ report.equal('exactly one page-level heading (h2) on the page', headings.length,
 report.equal('the heading is the section title', flattenText(headings[0]), '通知提醒');
 report.equal('the heading text equals the navigation row text', flattenText(headings[0]), sectionEntry.options.label());
 report.equal('exactly one intro line', intros.length, 1);
-report.check('the intro carries the section copy', flattenText(intros[0]).includes('宿主向你申请权限时响一次'), flattenText(intros[0]));
+report.check('the intro carries the section copy', flattenText(intros[0]).includes('DSH 向你申请权限时响一次'), flattenText(intros[0]));
 report.ok('the old competing card title is gone from the page', !flattenText(view.tree).includes('审批提示音'));
 
 const ranges = collect(view.tree, (node) => node.type === 'input' && node.props.type === 'range');
@@ -312,7 +406,7 @@ report.equal('the hidden file input is still rendered next to the picker', fileI
 report.equal('the remove control is absent while no imported tone is selected', buttons.some((button) => flattenText(button).includes('移除')), false);
 report.equal('exactly one bundle-revision badge', revBadges.length, 1);
 report.equal('the badge names the build the page loaded', flattenText(revBadges[0]), bundle.diagnostics.revision);
-report.equal('the revision stamp is rev-11', String(bundle.diagnostics.revision).startsWith('rev-11'), true);
+report.equal('the revision stamp is rev-20', String(bundle.diagnostics.revision).startsWith('rev-20'), true);
 const statsText = flattenText(view.tree);
 report.check('the section shows the trigger counter', statsText.includes('已触发'), statsText.slice(0, 120));
 report.check('the section shows the last-trigger indicator', statsText.includes('上次触发') && statsText.includes('尚未触发'));
@@ -332,8 +426,95 @@ report.ok(
   'the intro follows the Host intro rule (14px/22 + label-tertiary token)',
   styleText.includes('.dacIntro{color:var(--dsw-alias-label-tertiary,#71717a);margin:0;font-size:14px;line-height:22px;}'),
 );
-report.ok('the picker still pins its own box model (rev-5 R5-1)', styleText.includes('box-sizing:content-box;max-height:84px'), 'box-sizing:content-box;max-height:84px');
-report.ok('the picker keeps its 10px rounded corners (rev-3)', styleText.includes('border-radius:10px'));
+/* The two tone lists — the settings card's and the session popover's — are one design
+ * as of rev-12 (user request: the list in the header must look like the one in 设置).
+ * These assertions read the JOINED stylesheet, so they check what the browser is given
+ * rather than what the source intended, and they compare the two rules against each
+ * other: "differ only in the row cap" cannot be satisfied by two hand-kept copies that
+ * agree today, only by the shared fragments the bundle actually emits. */
+const pickerMetrics = bundle.diagnostics.pickerMetrics;
+/* Every rule whose selector LIST contains this selector, merged into one property map
+ * (later declarations win, exactly as the cascade would apply them to the element). */
+const pickerProps = (selector) => {
+  const props = {};
+  let from = 0;
+  for (;;) {
+    const at = styleText.indexOf(selector, from);
+    if (at < 0) break;
+    from = at + selector.length;
+    const before = at === 0 ? '' : styleText[at - 1];
+    const after = styleText[at + selector.length];
+    if (!(before === '' || before === ',' || before === '}' || before === '{')) continue;
+    if (!(after === '{' || after === ',')) continue;
+    const brace = after === '{' ? at + selector.length : styleText.indexOf('{', at);
+    const end = styleText.indexOf('}', brace);
+    for (const declaration of styleText.slice(brace + 1, end).split(';')) {
+      const colon = declaration.indexOf(':');
+      if (colon > 0) props[declaration.slice(0, colon).trim()] = declaration.slice(colon + 1).trim();
+    }
+  }
+  return props;
+};
+const sortedProps = (props, dropped) => Object.keys(props)
+  .filter((name) => name !== dropped)
+  .sort()
+  .map((name) => `${name}:${props[name]}`)
+  .join(';');
+const cardPicker = pickerProps('.dacCard select::picker(select)');
+const popPicker = pickerProps('.dacPop select::picker(select)');
+report.ok('the picker still pins its own box model (rev-5 R5-1)', cardPicker['box-sizing'] === 'content-box', 'box-sizing:' + cardPicker['box-sizing']);
+report.equal(
+  'the card picker still caps at exactly three rows (rev-5 R5-1)',
+  cardPicker['max-height'],
+  `${pickerMetrics.cardMaxPx}px`,
+);
+report.equal('the card picker cap is TONE_ROWS x the pinned row height', pickerMetrics.cardMaxPx, 3 * pickerMetrics.rowPx);
+report.equal('the picker keeps its 10px rounded corners (rev-3)', cardPicker['border-radius'], '10px');
+report.equal('both tone selects opt into the customizable picker (rev-12)', styleText.includes('.dacCard select,.dacPop select{appearance:base-select;}'), true);
+report.ok(
+  'both pickers are painted by ONE rule, so neither can drift away from the other (rev-12)',
+  styleText.includes('.dacCard select::picker(select),.dacPop select::picker(select){'),
+);
+report.equal('the session popover has a picker rule of its own for its row cap', Object.keys(popPicker).length > 0, true);
+report.equal(
+  'the popover picker is pinned exactly like the card\'s: content-box, rounded, auto-scroll',
+  popPicker['box-sizing'] === 'content-box' && popPicker['border-radius'] === '10px' && popPicker['overflow-y'] === 'auto',
+  true,
+);
+report.equal(
+  'the two pickers differ ONLY in how many rows they show (rev-12)',
+  sortedProps(cardPicker, 'max-height'),
+  sortedProps(popPicker, 'max-height'),
+);
+report.equal(
+  'the popover caps at its four default rows (跟随全局 + the three tones)',
+  popPicker['max-height'],
+  `${pickerMetrics.sessionMaxPx}px`,
+);
+report.equal('the popover lists exactly one row more than the card', bundle.diagnostics.sessionToneRows, bundle.diagnostics.toneRows + 1);
+report.equal(
+  'and that cap is those rows plus the few pixels the browser picker chrome adds',
+  pickerMetrics.sessionMaxPx,
+  bundle.diagnostics.sessionToneRows * pickerMetrics.rowPx + pickerMetrics.slackPx,
+);
+report.equal(
+  'the popover list states its own type size instead of inheriting the popover\'s 12px (rev-12)',
+  popPicker['font-size'],
+  `${pickerMetrics.textPx}px`,
+);
+report.equal('and that size is the card\'s own 13px, so the two lists read the same', pickerMetrics.textPx, 13);
+report.ok(
+  'both option lists share one row rule (radius 7, 4x9 padding, pinned 20px line box)',
+  styleText.includes('.dacCard select option,.dacPop select option{border-radius:7px;padding:4px 9px;line-height:20px;}'),
+);
+report.ok(
+  'both option lists share one highlight rule (the rounded tinted row, not the UA\'s square grey)',
+  styleText.includes('.dacPop select option:hover,.dacPop select option:checked{background:color-mix(in srgb,currentColor 14%,transparent);}'),
+);
+report.ok(
+  'and one fallback color rule for a browser without customizable select',
+  styleText.includes('.dacCard select option,.dacPop select option{background-color:var(--dsw-alias-bg-layer-1,#fff);'),
+);
 report.ok(
   'the enable control is the Apple switch (38x22 track, 16px knob, 2px inset, 16px travel)',
   styleText.includes('.dacSwitch{box-sizing:border-box;position:relative;flex:none;width:38px;height:22px;')
@@ -351,9 +532,10 @@ report.ok(
   styleText.includes('.dacToggle input{position:absolute;width:1px;height:1px;margin:-1px;padding:0;')
     && styleText.includes('clip:rect(0 0 0 0)'),
 );
-report.ok(
-  'the switch honours prefers-reduced-motion',
-  styleText.includes('@media (prefers-reduced-motion:reduce){.dacSwitch,.dacKnob{transition:none;}}'),
+report.equal(
+  'the switch keeps its transitions in every environment: the stylesheet carries no reduced-motion rule (rev-20)',
+  styleText.includes('prefers-reduced-motion'),
+  false,
 );
 
 /* -------------------------------------------------- 4. card writes the platform */
@@ -581,6 +763,364 @@ report.ok('the tooltip carries the English wording at the same time', loudLabel.
 report.equal('aria-label is the very same bilingual text', loudBell()?.props?.['aria-label'], loudLabel);
 report.equal('the caret names what it opens', String(byClass(loudView.tree, 'dacCaret')[0]?.props?.title ?? '').includes('本会话音色与音量'), true);
 
+/* rev-13 · the user read the first cut as too small ("把图标改大点，这个太小了"): a 20px
+ * button around a 14px icon, whose drawn bell fills ~68% of its viewBox. Three places
+ * have to agree — the CSS box, the two <svg> elements and the console surface — so the
+ * assertions read the SAME constants the bundle builds them from, and one of them
+ * compares against the shipped chips' 28px/15px so "bigger than before" cannot quietly
+ * become "bigger than nothing". */
+const sessionIcon = bell.diagnostics.sessionIcon;
+report.deepEqual(
+  'the header control reports its geometry on the console surface (rev-13)',
+  { bellBoxPx: sessionIcon.bellBoxPx, caretBoxPx: sessionIcon.caretBoxPx, bellGlyphPx: sessionIcon.bellGlyphPx, caretGlyph: sessionIcon.caretGlyph },
+  { bellBoxPx: 28, caretBoxPx: 16, bellGlyphPx: 22, caretGlyph: '11x16' },
+);
+/* rev-14 · the audible bell wears the switch's blue (user: "改成图片中的蓝色"). The claim
+ * that matters is not "it is blue" but "it is the SAME blue as the settings switch and the
+ * volume slider" — so the assertions extract the paint out of all three rules and compare
+ * them to each other and to the console surface, instead of trusting a literal.
+ * `mergedDecls` walks EVERY rule whose selector list names the selector and merges the
+ * declarations (later wins — what the element actually resolves to). A first-match lookup
+ * was tried first and let the "fill the muted state as well" mutation through, because the
+ * offending rule was a SECOND rule for the same selector; this version catches it.
+ *
+ * It reads the sheet with every `@media (…){…}` block REMOVED (`mediaBlocks` → `sheetDefault`
+ * below): the declarations the element resolves to in the DEFAULT environment. Without that
+ * strip a reduced-motion override for the same selector would masquerade as the base rule,
+ * because "later wins" would let a rule that only applies under `prefers-reduced-motion`
+ * overwrite the plain declaration. Media blocks are asserted separately, on their own text
+ * (`mediaBlocks` is exported to this file's later sections for exactly that), so nothing
+ * stops being checked.
+ */
+const mediaBlocks = (query) => {
+  const blocks = [];
+  let from = 0;
+  for (;;) {
+    const at = styleText.indexOf(query, from);
+    if (at < 0) return blocks;
+    let depth = 0;
+    let end = -1;
+    for (let cursor = styleText.indexOf('{', at); cursor >= 0 && cursor < styleText.length; cursor += 1) {
+      if (styleText[cursor] === '{') depth += 1;
+      else if (styleText[cursor] === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          end = cursor + 1;
+          break;
+        }
+      }
+    }
+    if (end < 0) return blocks;
+    blocks.push(styleText.slice(at, end));
+    from = end;
+  }
+};
+const sheetDefault = mediaBlocks('@media').reduce((text, block) => text.replace(block, ''), styleText);
+const mergedDecls = (selector) => {
+  const props = {};
+  let from = 0;
+  for (;;) {
+    const at = sheetDefault.indexOf(selector, from);
+    if (at < 0) break;
+    from = at + selector.length;
+    const before = at === 0 ? '' : sheetDefault[at - 1];
+    const after = sheetDefault[at + selector.length];
+    if (!(before === '' || before === ',' || before === '}' || before === '{')) continue;
+    if (!(after === '{' || after === ',')) continue;
+    const brace = after === '{' ? at + selector.length : sheetDefault.indexOf('{', at);
+    const end = sheetDefault.indexOf('}', brace);
+    for (const declaration of sheetDefault.slice(brace + 1, end).split(';')) {
+      const colon = declaration.indexOf(':');
+      if (colon > 0) props[declaration.slice(0, colon).trim()] = declaration.slice(colon + 1).trim();
+    }
+  }
+  return props;
+};
+const switchOn = mergedDecls('.dacSwitch[data-on="true"]');
+const sliderRule = mergedDecls('.dacCard input[type=range]');
+const bellOn = mergedDecls('.dacBell[data-muted="false"]');
+const bellOnHover = mergedDecls('.dacBell[data-muted="false"]:hover');
+const bellMuted = mergedDecls('.dacBell[data-muted="true"]');
+const bellBase = mergedDecls('.dacBell');
+report.equal(
+  'the audible bell is filled with the reported paint (rev-14)',
+  bellOn['background'] + '|' + bellOn['color'],
+  sessionIcon.onBackground + '|' + sessionIcon.onForeground,
+);
+report.equal('and that paint is the VERY SAME token the settings switch turns on with (rev-14)', switchOn['background'], sessionIcon.onBackground);
+report.equal('and the same one the volume slider uses (three rules, one value — rev-14)', sliderRule['accent-color'], sessionIcon.onBackground);
+report.equal('the bell glyph is white on that fill, so it stays readable', sessionIcon.onForeground, '#fff');
+report.equal(
+  'the filled bell has its OWN hover paint, so the generic hover cannot wipe the blue (rev-14)',
+  bellOnHover['background'],
+  'color-mix(in srgb,' + sessionIcon.onBackground + ' 86%,#000)',
+);
+report.equal(
+  'a MUTED session is NOT filled anywhere in the stylesheet: blue means "this session will ring" (rev-14)',
+  bellMuted['background'],
+  undefined,
+);
+report.equal(
+  'the muted state keeps the caption-grey glyph it always had (rev-14)',
+  bellMuted['color'],
+  'var(--dsw-alias-label-caption,#71717a)',
+);
+report.equal(
+  'the fill lives on the audible state, never on the plain button class (rev-14)',
+  bellBase['background'],
+  'transparent',
+);
+report.ok(
+  'and the paint on that fill is the one the console surface reports, not a copy',
+  styleText.includes('.dacBell[data-muted="false"]{background:' + sessionIcon.onBackground + ';color:' + sessionIcon.onForeground + ';}'),
+);
+report.ok(
+  'the bell button is the shipped chip size, not the old 20px (rev-13)',
+  styleText.includes(`.dacBell{width:${sessionIcon.bellBoxPx}px;height:${sessionIcon.bellBoxPx}px;}`),
+  '.dacBell{' + sessionIcon.bellBoxPx + 'px}',
+);
+report.ok(
+  'the caret is wider than before but the same height as the bell (rev-13)',
+  styleText.includes(`.dacCaret{width:${sessionIcon.caretBoxPx}px;height:${sessionIcon.bellBoxPx}px;}`),
+  '.dacCaret{' + sessionIcon.caretBoxPx + 'x' + sessionIcon.bellBoxPx + '}',
+);
+report.equal('the bell button matches the height a shipped header chip uses (28px)', sessionIcon.bellBoxPx, 28);
+report.ok(
+  'the bell and its caret are separated by the reported gap, not flush (rev-16)',
+  styleText.includes(
+    '.dacBellWrap{position:relative;display:inline-flex;align-items:center;gap:' + sessionIcon.bellGapPx + 'px;}',
+  ),
+  '.dacBellWrap{gap:' + sessionIcon.bellGapPx + 'px}',
+);
+report.equal(
+  'the gap is the host\'s own inter-chip rhythm, not the pre-rev-16 flush cluster',
+  sessionIcon.bellGapPx,
+  6,
+);
+const bellGlyphs = collect(loudView.tree, (node) => node.type === 'svg' && Number(node.props?.width) === sessionIcon.bellGlyphPx);
+report.equal(
+  'the bell is drawn at the reported glyph size, not at the old 14px',
+  bellGlyphs.length >= 1 && bellGlyphs[0]?.props?.height === sessionIcon.bellGlyphPx,
+  true,
+);
+report.ok(
+  'and that glyph is materially bigger than rev-12\'s 14px, so it reads as a control (rev-13)',
+  sessionIcon.bellGlyphPx >= 20 && sessionIcon.bellGlyphPx > 14 * 1.4,
+  sessionIcon.bellGlyphPx + 'px vs 14px (rev-12) = ' + (sessionIcon.bellGlyphPx / 14).toFixed(2) + 'x',
+);
+const caretGlyphs = collect(loudView.tree, (node) => node.type === 'svg' && String(node.props?.width) + 'x' + String(node.props?.height) === sessionIcon.caretGlyph);
+report.equal('the caret chevron is drawn at the reported size (rev-13)', caretGlyphs.length, 1);
+report.ok(
+  'the hover pill was rounded up with the box (8px, so a 28px box reads as a chip)',
+  styleText.includes('cursor:pointer;border-radius:8px;line-height:0;}'),
+);
+
+/* rev-17 · the caret TURNS while the popover is open. The failure these assertions exist to
+ * catch is not "the angle is wrong" but "the wrong box turned": `.dacCaret` is a 16×28
+ * button that has to line up with the 28px bell beside it, and a 90° turn of THAT box swaps
+ * it to 28×16, so the tall hover chip would become a wide bar under the pointer. The turn is
+ * therefore read off `.dacCaret svg`, the button's own box is checked to be untouched in
+ * BOTH states, and the turned glyph's footprint is compared against the box it must fit in.
+ * Both numbers are compared against the console surface rather than against a hand-written
+ * second copy, so the stylesheet and `sessionIcon` cannot drift apart. */
+const caretGlyphRule = mergedDecls('.dacCaret svg');
+const caretOpenGlyphRule = mergedDecls('.dacCaret[data-open="true"] svg');
+const caretButtonRule = mergedDecls('.dacCaret');
+const caretOpenButtonRule = mergedDecls('.dacCaret[data-open="true"]');
+const caretGlyphPx = sessionIcon.caretGlyph.split('x').map((part) => Number(part));
+report.equal(
+  'the caret glyph carries the quarter turn in the open state, at the reported angle (rev-17)',
+  caretOpenGlyphRule['transform'],
+  'rotate(' + sessionIcon.caretOpenRotateDeg + 'deg)',
+);
+report.equal(
+  'and the closed state is untransformed — the turn is a state, not a base style (rev-17)',
+  caretGlyphRule['transform'],
+  undefined,
+);
+report.equal(
+  'the turn is animated by the reported duration and curve, so CSS and console cannot disagree (rev-17)',
+  caretGlyphRule['transition'],
+  'transform ' + sessionIcon.caretRotateMs + 'ms ease',
+);
+report.equal('the angle is the quarter turn the user asked for (rev-17)', sessionIcon.caretOpenRotateDeg, 90);
+/* rev-20 · the duration moved 400 ms → 160 ms, and this round also records WHY no
+ * duration was ever played: the caret's own reduced-motion override deleted the transition on the
+ * reporting device, so rev-18's 300 ms and rev-19's 400 ms both arrived as the same instant
+ * cut. What is pinned below is the SHIPPED number, and that the stylesheet still CONCATENATES
+ * it from the constant — a hand-copied `160ms` would satisfy "the value is 160" while
+ * quietly re-introducing the second copy the constant exists to prevent.
+ *
+ * WHAT THESE ASSERTIONS CANNOT CLAIM: that any duration makes the turn perceivable. That is an
+ * EXPECTATION — a judgment, not a device measurement — so every check name below states only a
+ * measurable fact (the shipped value, the curve, the angle, the box), and the note beside the
+ * constant is the only place the expectation is written down. Whether the turn is perceivable is
+ * settled by the user on their own hardware and by nothing in this file; r18c/t7 renamed the
+ * assertion whose name used to assert otherwise, and r20/t1 changed no assertion into a claim
+ * about perception. */
+report.equal(
+  'the duration is the rev-20 one: 160 ms, the value this round shipped (rev-20)',
+  sessionIcon.caretRotateMs,
+  160,
+);
+report.ok(
+  'and the stylesheet builds that duration from the constant instead of copying a number (rev-20)',
+  source.includes("'.dacCaret svg{transition:transform ' + String(CARET_ROTATE_MS) + 'ms ease;}'"),
+  "'.dacCaret svg{transition:transform ' + String(CARET_ROTATE_MS) + 'ms ease;}'",
+);
+report.equal(
+  'so exactly ONE caret transition rule exists, with no stale 400 ms copy beside it (rev-20)',
+  (styleText.match(/\.dacCaret svg\{transition:transform \d+ms ease;\}/g) ?? []).length,
+  1,
+);
+report.ok(
+  'the turn is centred on the glyph, so it points down instead of swinging towards an edge (rev-17)',
+  caretGlyphRule['transform-origin'] === 'center',
+  String(caretGlyphRule['transform-origin']),
+);
+report.ok(
+  'the BUTTON is never rotated — no transform on .dacCaret in either state (rev-17)',
+  caretButtonRule['transform'] === undefined && caretOpenButtonRule['transform'] === undefined,
+  'closed=' + String(caretButtonRule['transform']) + ', open=' + String(caretOpenButtonRule['transform']),
+);
+report.ok(
+  'so the button keeps the exact caretBoxPx×bellBoxPx box the turn must not touch (rev-17)',
+  caretButtonRule['width'] === sessionIcon.caretBoxPx + 'px'
+    && caretButtonRule['height'] === sessionIcon.bellBoxPx + 'px'
+    && sessionIcon.caretBoxPx === 16
+    && sessionIcon.bellBoxPx === 28,
+  '.dacCaret{' + String(caretButtonRule['width']) + ' × ' + String(caretButtonRule['height']) + '}',
+);
+report.ok(
+  'and the turned glyph (11×16 rotated into 16×11) still fits inside that button (rev-17)',
+  caretGlyphPx[1] <= sessionIcon.caretBoxPx && caretGlyphPx[0] <= sessionIcon.bellBoxPx,
+  sessionIcon.caretGlyph + ' turned = ' + caretGlyphPx[1] + '×' + caretGlyphPx[0] + ' inside ' + sessionIcon.caretBoxPx + '×' + sessionIcon.bellBoxPx,
+);
+const caretButton = byClass(loudView.tree, 'dacCaret')[0];
+const caretButtonSvg = caretButton?.children?.[0];
+report.ok(
+  'the rotated element is the <svg> INSIDE the button, and no inline transform is used at all (rev-17)',
+  caretButton?.props?.className === 'dacCaret'
+    && caretButtonSvg?.type === 'svg'
+    && caretButton?.props?.style === undefined
+    && caretButtonSvg?.props?.style === undefined,
+  'children=' + JSON.stringify((caretButton?.children ?? []).map((child) => child?.type)),
+);
+/* rev-20 · the override is GONE. rev-17 shipped a reduced-motion block that removed the caret's
+ * transition for readers who ask for no motion, and rev-18 and rev-19 raised the duration twice while
+ * that block silently deleted it on the reporting user's machine — which is why no duration ever
+ * showed up there. Both it and the switch's sibling block are deleted, so the caret turn takes
+ * `sessionIcon.caretRotateMs` in EVERY environment. These three checks state that as a measurable
+ * fact instead of pinning a block that no longer exists. */
+report.equal(
+  'no reduced-motion rule is emitted for the caret any more (rev-20)',
+  mediaBlocks('@media (prefers-reduced-motion').length,
+  0,
+);
+report.ok(
+  'and the product itself carries no `@media (prefers-reduced-motion` block at all, so nothing can damp the turn (rev-20)',
+  (String(source).match(/@media \(prefers-reduced-motion/g) ?? []).length === 0,
+  'occurrences in lib/client.js=' + String((String(source).match(/@media \(prefers-reduced-motion/g) ?? []).length),
+);
+report.ok(
+  'so the caret keeps its ONE transition in every environment, whatever the platform prefers (rev-20)',
+  styleText.includes('.dacCaret svg{transition:transform ' + sessionIcon.caretRotateMs + 'ms ease;}')
+    && !styleText.includes('prefers-reduced-motion'),
+  'transition=' + String(sessionIcon.caretRotateMs) + 'ms, reduced-motion text in the sheet=' + styleText.includes('prefers-reduced-motion'),
+);
+report.ok(
+  'and the 90° terminal state really is outside it, spelled from the two reported constants (rev-17)',
+  styleText.includes('.dacCaret[data-open="true"] svg{transform:rotate(' + sessionIcon.caretOpenRotateDeg + 'deg);}')
+    && styleText.includes('.dacCaret svg{transition:transform ' + sessionIcon.caretRotateMs + 'ms ease;}'),
+  'rotate(' + sessionIcon.caretOpenRotateDeg + 'deg) / ' + sessionIcon.caretRotateMs + 'ms ease',
+);
+
+/* rev-18 · the reduce-motion diagnostic, re-scoped by rev-20. It used to be the second half of
+ * the "an arrow that jumps has TWO causes" story: the turn was too fast to see, or the environment
+ * asked for reduced motion and the media block then removed the transition BY DESIGN. rev-20 deleted
+ * that block — the environment had been deleting the turn on the reporting device all along — so the
+ * diagnostic is now an ENVIRONMENT REPORT: it still answers the live media query on every call, and
+ * nothing in the bundle branches on the answer any more. The three stubs below are the three answers a
+ * real page can give — reduce, no preference, and no `matchMedia` at all (which is what this repo's own
+ * headless platform looks like, so it is the branch most likely to be hit accidentally and must not
+ * throw). */
+report.section('rev-18 · reduceMotion() reports the environment (re-scoped by rev-20: nothing branches on it)');
+report.equal(
+  'the diagnostic is a top-level function, not a boolean snapshot (rev-18)',
+  typeof bundle.diagnostics.reduceMotion,
+  'function',
+);
+report.equal(
+  'and it is NOT part of the geometry snapshot (sessionIcon carries no motion key) (rev-18)',
+  Object.prototype.hasOwnProperty.call(sessionIcon, 'reduceMotion'),
+  false,
+);
+
+const noMediaInstance = instantiate();
+report.equal(
+  'the stub platform really has no matchMedia, so the no-support case is honest (rev-18)',
+  typeof noMediaInstance.sandbox.context.window.matchMedia,
+  'undefined',
+);
+report.equal(
+  'no matchMedia at all answers false instead of throwing (rev-18)',
+  noMediaInstance.diagnostics.reduceMotion(),
+  false,
+);
+
+const calmMediaInstance = instantiate();
+calmMediaInstance.sandbox.context.window.matchMedia = (query) => ({ media: query, matches: false });
+report.equal(
+  'matchMedia reporting no preference answers false (rev-18)',
+  calmMediaInstance.diagnostics.reduceMotion(),
+  false,
+);
+
+const reducedMediaInstance = instantiate();
+const askedMotionQueries = [];
+reducedMediaInstance.sandbox.context.window.matchMedia = (query) => {
+  askedMotionQueries.push(query);
+  return { media: query, matches: query === '(prefers-reduced-motion: reduce)' };
+};
+report.equal(
+  'matchMedia reporting reduce answers true (rev-18)',
+  reducedMediaInstance.diagnostics.reduceMotion(),
+  true,
+);
+report.deepEqual(
+  'and the query it asked is exactly the reduced-motion one (rev-18)',
+  askedMotionQueries,
+  ['(prefers-reduced-motion: reduce)'],
+);
+
+const liveMediaInstance = instantiate();
+liveMediaInstance.sandbox.context.window.matchMedia = () => ({ matches: false });
+const motionBeforeFlip = liveMediaInstance.diagnostics.reduceMotion();
+liveMediaInstance.sandbox.context.window.matchMedia = () => ({ matches: true });
+const motionAfterFlip = liveMediaInstance.diagnostics.reduceMotion();
+report.ok(
+  'the answer is re-read on EVERY call, so a setting flipped mid-session is seen (rev-18)',
+  motionBeforeFlip === false && motionAfterFlip === true,
+  motionBeforeFlip + ' → ' + motionAfterFlip,
+);
+
+const hostileMediaInstance = instantiate();
+hostileMediaInstance.sandbox.context.window.matchMedia = () => {
+  throw new Error('matchMedia blocked');
+};
+let hostileMotionAnswer = null;
+let hostileMotionThrew = null;
+try {
+  hostileMotionAnswer = hostileMediaInstance.diagnostics.reduceMotion();
+} catch (error) {
+  hostileMotionThrew = error.message;
+}
+report.ok(
+  'a matchMedia that THROWS is caught and answers false, rather than breaking the page (rev-18)',
+  hostileMotionThrew === null && hostileMotionAnswer === false,
+  hostileMotionThrew === null ? String(hostileMotionAnswer) : 'threw: ' + hostileMotionThrew,
+);
+
 const quietView = createRenderer(bell.sandbox.react, actionComponent, { sessionId: 'session-quiet' });
 quietView.render();
 quietView.runEffects();
@@ -648,6 +1188,19 @@ popView.runEffects();
 const popover = () => byClass(popView.tree, 'dacPop')[0];
 report.equal('pressing the caret opens exactly one popover', byClass(popView.tree, 'dacPop').length, 1);
 report.equal('the caret reports its expanded state', byClass(popView.tree, 'dacCaret')[0]?.props?.['data-open'], 'true');
+/* rev-17 · the turn is driven by the hook the render tree ALREADY had: no angle is computed
+ * in JS, and the element that turns is still the <svg> child — never the button box. */
+const openCaret = byClass(popView.tree, 'dacCaret')[0];
+const openCaretSvg = openCaret?.children?.[0];
+report.ok(
+  'the open caret turns its glyph off that same [data-open="true"] hook — no angle is computed in JS (rev-17)',
+  openCaret?.props?.['data-open'] === 'true'
+    && openCaret?.props?.['aria-expanded'] === true
+    && openCaretSvg?.type === 'svg'
+    && openCaret?.props?.style === undefined
+    && openCaretSvg?.props?.style === undefined,
+  'data-open=' + String(openCaret?.props?.['data-open']) + ', child=' + String(openCaretSvg?.type),
+);
 report.equal('the popover is a dialog for assistive tech', popover()?.props?.role, 'dialog');
 report.equal('it is positioned fixed, so the header row cannot clip or scroll it', popover()?.props?.style?.position, 'fixed');
 const popSelects = collect(popover(), (node) => node.type === 'select');
@@ -673,20 +1226,39 @@ report.ok('the popover says where the data is stored', flattenText(popover()).in
 popInstance.sandbox.document.fire('keydown', { key: 'Escape' });
 popView.render();
 report.equal('Escape closes the popover', byClass(popView.tree, 'dacPop').length, 0);
+report.ok(
+  'and the caret drops back to the untransformed state the CSS names [data-open="false"] (rev-17)',
+  byClass(popView.tree, 'dacCaret')[0]?.props?.['data-open'] === 'false'
+    && byClass(popView.tree, 'dacCaret')[0]?.children?.[0]?.type === 'svg'
+    && byClass(popView.tree, 'dacCaret')[0]?.props?.style === undefined,
+  'data-open=' + String(byClass(popView.tree, 'dacCaret')[0]?.props?.['data-open']),
+);
 byClass(popView.tree, 'dacCaret')[0].props.onClick({});
 popView.render();
 popView.runEffects();
 report.equal('the popover can be reopened', byClass(popView.tree, 'dacPop').length, 1);
-popInstance.sandbox.document.fire('pointerdown');
-popView.render();
-report.equal('an outside pointer press closes it', byClass(popView.tree, 'dacPop').length, 0);
 
 // The two refs, in hook order: the wrapper (what the popover anchors to) and the caret.
 const popRefs = popView.hooks.filter((hook) => hook !== null && typeof hook === 'object' && 'current' in hook);
 report.equal('the component keeps a wrapper ref and a caret ref', popRefs.length, 2);
+
+/* rev-12 hands the tone list to the browser's customizable-select rendering, which makes
+ * the options real DOM inside the select — so a press on one of them is an INSIDE press
+ * for the dismissal handler. The suite only covered Escape and outside presses before;
+ * if "inside" ever stopped keeping the panel open, picking a tone would close the popover
+ * before the change event could reach the select and the choice would be lost. */
+popRefs[0].current = { contains: () => true, getBoundingClientRect: () => ({ left: 300, top: 40, right: 320, bottom: 60 }) };
+report.equal('the popover renders its option list inside its own subtree (rev-12)', collect(popover(), (node) => node.type === 'option').length, 4);
+popInstance.sandbox.document.fire('pointerdown', { target: { tagName: 'OPTION' } });
+popView.render();
+report.equal('a press on the tone list counts as INSIDE and leaves the popover open (rev-12)', byClass(popView.tree, 'dacPop').length, 1);
+popRefs[0].current = { contains: () => false, getBoundingClientRect: () => ({ left: 300, top: 40, right: 320, bottom: 60 }) };
+popInstance.sandbox.document.fire('pointerdown', { target: { tagName: 'BODY' } });
+popView.render();
+report.equal('an outside pointer press closes it', byClass(popView.tree, 'dacPop').length, 0);
+
 popInstance.sandbox.context.window.innerWidth = 1000;
 popInstance.sandbox.context.window.innerHeight = 800;
-popRefs[0].current = { contains: () => false, getBoundingClientRect: () => ({ left: 300, top: 40, right: 320, bottom: 60 }) };
 byClass(popView.tree, 'dacCaret')[0].props.onClick({});
 popView.render();
 report.deepEqual(
@@ -930,6 +1502,104 @@ report.ok(
   refusedRace.diagnostics.sessions().error,
 );
 report.equal('nothing is left in flight after a refusal', refusedRace.diagnostics.sessionWrites().outstanding, 0);
+
+/* ========= 5j. rev-15 · a failed convergence re-read keeps the mutes (OBS-A) ======= */
+
+report.section('rev-15 · a failed convergence re-read keeps the mutes (OBS-A)');
+
+/* OBS-A: rev-11 made every settled write re-read the table, and that re-read used to
+ * degrade the local copy to "no overrides" whenever it failed — the local table is what
+ * holds the user's own mutes, so ONE transient failure put a silenced session back on the
+ * global switch, and it rang. The failure-path claims below are RED on the pre-fix bytes
+ * (measured against the verbatim rev-14 copy: 11 of them, plus the revision stamp). The
+ * rest of the block pins what the fix must NOT change — the error row, one read per settle,
+ * the popover, the counters — and is therefore green on both sides by construction. The
+ * table is compared field by field across the failure, the silenced session is re-triggered
+ * afterwards, and the failure reason has to reach the popover's EXISTING error row. */
+const obsAStore = flakyReadStore({ 'obs-a-keep': { tone: 'bell', updatedAt: 4 } });
+const obsA = instantiate({ fetch: obsAStore.fetch });
+await settle();
+const obsAView = createRenderer(obsA.sandbox.react, entryFor(obsA, 'conversation.session.header.actions').component, { sessionId: 'obs-a' });
+obsAView.render();
+obsAView.runEffects();
+report.equal('the mount read landed — it is the RE-read that will break', obsA.diagnostics.sessions().ready, true);
+report.equal('one read before any write', obsAStore.reads(), 1);
+report.deepEqual('and the table is the Host file', obsA.diagnostics.sessions().sessions, obsAStore.snapshot());
+
+// Ring once while the session is still audible, so the silence asserted further down is a
+// CHANGE and not a tautology.
+obsA.harness.pushPending([['obs-a', approvalInteraction('approval:obs-a-1')]]);
+await settle();
+report.equal('an approval for the audible session rings', obsA.diagnostics.stats().triggers, 1);
+const nodesWhileAudible = obsA.record.oscillators.length;
+report.check('and it really built audio nodes', nodesWhileAudible > 0, `${nodesWhileAudible} oscillator(s)`);
+
+// The user mutes THIS session. The write lands; the convergence re-read that follows does not.
+// The hook records the LOCAL table in the instant that failing read is issued — the "before"
+// side of the comparison, taken from the bundle itself rather than assumed to equal the store.
+let tableWhenReadFailed = null;
+obsAStore.onRead = () => {
+  if (tableWhenReadFailed === null) tableWhenReadFailed = obsA.diagnostics.sessions().sessions;
+};
+obsAStore.breakWith('http-error');
+const obsAMute = obsA.diagnostics.toggleSession('obs-a');
+report.equal('the write lands and the promise still resolves false (never a rejection)', await obsAMute, false);
+await settle();
+obsAStore.onRead = null;
+const afterFailure = obsA.diagnostics.sessions();
+report.equal('the POST carried the mute to the Host', JSON.parse(obsAStore.posts()[0]?.options?.body ?? 'null').patch.enabled, false);
+report.equal('so the Host file holds the mute', obsAStore.snapshot()['obs-a']?.enabled, false);
+report.equal('the failed re-read happened exactly once — a settle never retries', obsAStore.reads(), 2);
+report.deepEqual('OBS-A: the failed re-read did NOT drop the local table', afterFailure.sessions, obsAStore.snapshot());
+report.deepEqual('the table is the table from BEFORE the failure (observed on the bundle, not assumed)', afterFailure.sessions, tableWhenReadFailed);
+report.deepEqual('field-for-field, order-independent — not just the same JSON text', fieldWise(afterFailure.sessions), fieldWise(tableWhenReadFailed));
+report.equal('the mute the user made is still there', afterFailure.sessions['obs-a']?.enabled, false);
+report.equal('the other session keeps its untouched override', afterFailure.sessions['obs-a-keep']?.tone, 'bell');
+report.equal('ready is not rolled back either — the table is still known', afterFailure.ready, true);
+report.equal('nor is the revision', afterFailure.revision, 1);
+report.ok('the failure reason is on the error line', String(afterFailure.error).includes('the store is unreachable'), afterFailure.error);
+obsAView.render();
+report.equal('the bell still reads as muted (the click was not undone)', byClass(obsAView.tree, 'dacBell')[0]?.props?.['data-muted'], 'true');
+
+byClass(obsAView.tree, 'dacCaret')[0].props.onClick({});
+obsAView.render();
+obsAView.runEffects();
+report.equal('the popover opens', byClass(obsAView.tree, 'dacPop').length, 1);
+report.equal('the reason shows in the error row the popover already had', byClass(obsAView.tree, 'dacPopError').length, 1);
+report.ok(
+  'carrying the reason, not a bare label',
+  flattenText(byClass(obsAView.tree, 'dacPop')[0]).includes('the store is unreachable'),
+  flattenText(byClass(obsAView.tree, 'dacPop')[0]).slice(0, 240),
+);
+
+// THE POINT OF OBS-A: a muted session must not ring because a read failed.
+const suppressedBeforeRetrigger = obsA.diagnostics.stats().suppressedSession;
+const nodesBeforeRetrigger = obsA.record.oscillators.length;
+obsA.harness.pushPending([['obs-a', approvalInteraction('approval:obs-a-2')]]);
+await settle();
+report.equal('a NEW approval for the still-muted session does not ring', obsA.diagnostics.stats().triggers, 1);
+report.equal('no audio node was built for it', obsA.record.oscillators.length, nodesBeforeRetrigger);
+report.equal('it counts as a per-session mute', obsA.diagnostics.stats().suppressedSession, suppressedBeforeRetrigger + 1);
+report.equal('the global switch was never the reason', obsA.diagnostics.stats().suppressedDisabled, 0);
+
+// The other failure shape: the socket itself dies (the promise rejects instead of answering).
+obsAStore.breakWith('reject');
+report.equal('a rejected re-read reports false too', await obsA.diagnostics.refreshSessions(), false);
+await settle();
+report.deepEqual('a rejected re-read also keeps the whole table', obsA.diagnostics.sessions().sessions, obsAStore.snapshot());
+report.ok('with its own reason on the error line', String(obsA.diagnostics.sessions().error).includes('network down'), obsA.diagnostics.sessions().error);
+
+// Convergence is still convergence: the next read that LANDS sets the table to the file.
+obsAStore.heal();
+report.equal('a later read lands again', await obsA.diagnostics.refreshSessions(), true);
+await settle();
+report.deepEqual('and the table converges onto the Host file', obsA.diagnostics.sessions().sessions, obsAStore.snapshot());
+report.equal('the error line is gone once a read succeeds', obsA.diagnostics.sessions().error, '');
+report.equal('the mute the user set is still in place', obsA.diagnostics.sessionSettings('obs-a').enabled, false);
+obsAView.render();
+report.equal('so the popover carries no error row any more', byClass(obsAView.tree, 'dacPopError').length, 0);
+report.equal('four reads in total: mount, convergence, one broken manual read, one recovery', obsAStore.reads(), 4);
+report.ok('neither failure produced an unhandled rejection', rejections.seen.length === 0, rejections.seen.map(String).join(' | '));
 
 /* ------------------------------------------------- 6. autoplay + degradation */
 

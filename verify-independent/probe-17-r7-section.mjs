@@ -110,55 +110,217 @@ function locate(source, pattern) {
   return null;
 }
 
+/* -------------------------- resolving the injected CSS (rev-12 shape repair, t2) */
+
+/*
+ * Three checks below used to read the picker styles by REGEX out of one
+ * `::picker(select){...}` block. rev-12 deliberately split that block: the box declarations
+ * moved into a rule whose selector list names BOTH tone lists, and each list kept a rule of
+ * its own carrying only `max-height`. The three checks keep their SUBJECTS unchanged — the
+ * card's list is content-box AND exactly 84px; its option rows are 20px/4px so three rows
+ * are 84px; the fallback option-colour rule still covers the card — but they now RESOLVE
+ * those facts by cascading over every rule inside `@supports (appearance:base-select)`
+ * whose selector LIST names the card's list, which is what a browser does. Nothing here
+ * asserts co-location any more: that is exactly what rev-12 changed.
+ */
+
+const CARD_PICKER_SELECTOR = '.dacCard select::picker(select)';
+const CARD_OPTION_SELECTOR = '.dacCard select option';
+
+/** The body of `prelude{...}` with brace matching, plus where it sits in `css`. */
+function cssBlockBody(css, prelude) {
+  const at = css.indexOf(prelude);
+  if (at < 0) return null;
+  const open = css.indexOf('{', at);
+  if (open < 0) return null;
+  let depth = 0;
+  for (let index = open; index < css.length; index += 1) {
+    if (css[index] === '{') depth += 1;
+    else if (css[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return { body: css.slice(open + 1, index), start: open + 1, end: index, preludeStart: at };
+    }
+  }
+  return null;
+}
+
+/** The flat `sel{decls}` rules of a body (nested blocks are not expected in this sheet). */
+function cssRules(body) {
+  const found = [];
+  let cursor = 0;
+  while (cursor < body.length) {
+    const open = body.indexOf('{', cursor);
+    if (open < 0) break;
+    const selector = body.slice(cursor, open).trim();
+    let depth = 0;
+    for (let index = open; index < body.length; index += 1) {
+      if (body[index] === '{') depth += 1;
+      else if (body[index] === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          found.push({ selector, declarations: body.slice(open + 1, index) });
+          cursor = index + 1;
+          break;
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/** Top-level selector-list split: a comma inside `(...)` does not split. */
+function cssSelectorList(text) {
+  const out = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const ch = text[index];
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    else if (ch === ',' && depth === 0) {
+      out.push(text.slice(start, index));
+      start = index + 1;
+    }
+  }
+  out.push(text.slice(start));
+  return out.map((entry) => entry.trim().replace(/\s+/g, ' ')).filter((entry) => entry !== '');
+}
+
+/**
+ * Resolve a target's declarations across the rules that NAME it. Participation is an exact
+ * selector match, so every participant carries the identical specificity and written order
+ * is the entire cascade. `declarations` is a Map; missing properties simply do not appear.
+ */
+function cssResolve(ruleList, target) {
+  const participants = ruleList.filter((rule) => cssSelectorList(rule.selector).includes(target));
+  const declarations = new Map();
+  for (const rule of participants) {
+    for (const part of rule.declarations.split(';')) {
+      const colon = part.indexOf(':');
+      if (colon < 0) continue;
+      declarations.set(part.slice(0, colon).trim(), part.slice(colon + 1).trim());
+    }
+  }
+  return { participants, declarations };
+}
+
+/** Map lookup that answers null instead of undefined. */
+function cssValue(resolved, property) {
+  return resolved.declarations.has(property) ? resolved.declarations.get(property) : null;
+}
+
+/** The whole stylesheet with the `@supports (appearance:base-select)` block cut out. */
+function cssOutsideSupports(css) {
+  const block = cssBlockBody(css, '@supports (appearance:base-select)');
+  if (block === null) return css;
+  return css.slice(0, block.preludeStart) + css.slice(block.end + 1);
+}
+
 /* --------------------------------------------------------------- mutations */
+
+/**
+ * Replace the ONE occurrence of `from`, MEASURING the anchor first. An anchor that occurs
+ * zero times is a dead mutation (it would silently change nothing at all); one that occurs
+ * twice would let a plain `String.replace` pick a spot the author did not mean. Both are
+ * hard errors here, and the measured count goes into the message, so a log proves the
+ * measurement happened instead of leaving a no-op looking like a pass.
+ *
+ * Every anchor below is a SINGLE-LINE fragment on purpose: this worktree checks
+ * `lib/client.js` out as CRLF (`git ls-files --eol` -> `i/lf w/crlf`), so an anchor
+ * carrying a bare `\n` could never match and would throw instead of proving anything.
+ */
+function replaceOnce(source, from, to, label) {
+  const first = source.indexOf(from);
+  if (first < 0) throw new Error(`mutation anchor not found (0 occurrences): ${label ?? from}`);
+  const second = source.indexOf(from, first + from.length);
+  if (second >= 0) throw new Error(`mutation anchor is not unique (2+ occurrences): ${label ?? from}`);
+  return source.slice(0, first) + to + source.slice(first + from.length);
+}
 
 /**
  * In-memory-only mutations of the SHIPPED source. `files` stay untouched: the probe
  * rewrites the string it is about to evaluate, never the file on disk. `expectFail`
- * lists the checks that MUST report a failure — a mutation nothing notices fails
- * the probe, which is what makes every check below falsifiable rather than decorative.
+ * lists the checks that MUST report a failure — and, since the t2 audit, that is an
+ * EXACT list: a red check outside `expectFail` fails the mutant too, because "one
+ * mutation reddens some set of checks" is not the claim being made here. A mutation
+ * nothing notices fails the probe, which is what makes every check below falsifiable
+ * rather than decorative.
  */
 const MUTATIONS = {
   slot: {
     what: '注册槽位改回 settings.plugin.item（模拟"没移走"）',
     always: ['the entry slot name (stub ledger)', 'no settings.plugin.item registration ledger entry'],
+    // The t2 audit re-measured this mutant three times (identical sets every time): swapping
+    // the registration back to the old slot also reddens the slot-name ledger, the
+    // "no settings.plugin.item slot" pair, the keyed-card key claim, the register option
+    // set, the private-id claim and the host projection. The declaration below lists the
+    // MEASURED set; the previous three-entry list was simply incomplete.
     expectFail: [
+      'the injected slot names',
       'the entry slot name (stub ledger)',
       'no settings.plugin.item registration ledger entry',
+      'no settings.plugin.item slot was injected',
+      'the "plugins tab" vocabulary is absent as well (no keyed-card leftovers)',
       'the bundle no longer claims a keyed-card key',
+      'the host-visible register option set is exactly name/id/order/label/locale',
+      'the private id is the plugin namespace, not a shipped one',
+      'the host projection (sort by order) puts this row directly after 插件',
     ],
     apply(source) {
+      // `once` CHAINS onto its own output (t2 repair). It used to slice the original
+      // `source` every time, so of three substitutions only the LAST one survived -- which
+      // is why the register-entry swaps never reached the evaluated source even when their
+      // anchors matched. Each call now asserts the anchor occurs EXACTLY once in the text
+      // it is about to rewrite (see replaceOnce), and the result is asserted to differ from
+      // the shipped bytes by the mutation verdict below.
+      let next = source;
       const once = (from, to, label) => {
-        const at = source.indexOf(from);
-        if (at < 0) throw new Error(`mutation anchor not found: ${label ?? from}`);
-        return source.slice(0, at) + to + source.slice(at + from.length);
+        const before = next;
+        next = replaceOnce(next, from, to, label);
+        if (next === before) throw new Error(`mutation substitution was a no-op: ${label}`);
       };
       // Anchor on the registration BLOCK, not the bare call: the bundle's own doc
       // comment mentions `settings.section` too, and a comment is not a registration.
-      let next = once("ctx.slots.inject('settings.section', function () {", "ctx.slots.inject('settings.plugin.item', function () {", 'inject call');
-      next = once("name: 'settings.section',\n                id: 'approval-chime'", "name: 'settings.plugin.item',\n                key: 'approval-chime'", 'register entry head');
+      //
+      // Two SINGLE-LINE anchors on purpose (found while fixing rev-12): this worktree
+      // checks `lib/client.js` out as CRLF (`git ls-files --eol` says `i/lf w/crlf`), so the
+      // previous two-line anchor carrying a bare `\n` could never match and this mutation
+      // threw "mutation anchor not found" instead of proving anything.
+      once("ctx.slots.inject('settings.section', function () {", "ctx.slots.inject('settings.plugin.item', function () {", 'inject call');
+      once("name: 'settings.section',", "name: 'settings.plugin.item',", 'register entry name');
+      once("id: 'approval-chime',", "key: 'approval-chime',", 'register entry key');
       return next;
     },
   },
   order: {
     what: 'order 从 16 改成 99（模拟"写错位置"）',
-    expectFail: ['order is 16 (right after 插件 at 15)'],
+    // Measured (three identical runs in the t2 audit): a wrong `order` also trips the
+    // "strictly between plugins(15) and agent-presets(20)" fence and the host projection.
+    // The old one-entry declaration was incomplete; the checks themselves are unchanged.
+    expectFail: [
+      'order is 16 (right after 插件 at 15)',
+      'order 16 falls strictly between plugins(15) and agent-presets(20)',
+      'the host projection (sort by order) puts this row directly after 插件',
+    ],
     apply(source) {
-      return source.replace("order: 16,", 'order: 99,');
+      return replaceOnce(source, "order: 16,", 'order: 99,', 'order');
     },
   },
   heading: {
     what: '删掉页面标题 h2（模拟"控件缺失"）',
     expectFail: ['the page heading is an <h2> carrying 通知提醒', 'exactly one <h2> on the page'],
     apply(source) {
-      return source.replace("React.createElement('h2', { className: 'dacTitle' }, t('title')),", 'null,');
+      return replaceOnce(source, "React.createElement('h2', { className: 'dacTitle' }, t('title')),", 'null,', 'heading h2');
     },
   },
   picker: {
-    what: '删掉 ::picker(select) 的 3 行高度规则（模拟"播放下拉回归"）',
-    expectFail: ['the ::picker(select) block keeps box-sizing:content-box;max-height:84px'],
+    what: '删掉卡片那张列表的 max-height 上限规则（模拟"播放下拉回归"；rev-12 后上限已是一条独立规则）',
+    expectFail: [
+      'the card list\'s ::picker(select) resolves box-sizing:content-box AND max-height:84px',
+      '3 rows are exactly what the popup shows: max-height 84px = 3 x (line-height 20px + 4px padding x2)',
+    ],
     apply(source) {
-      return source.replace("'box-sizing:content-box;max-height:' + String(TONE_ROWS * TONE_ROW_PX) + 'px;',", '');
+      return replaceOnce(source, "'.dacCard select::picker(select){max-height:' + String(TONE_ROWS * TONE_ROW_PX) + 'px;}',", '', 'card picker cap rule');
     },
   },
   rogue: {
@@ -168,7 +330,13 @@ const MUTATIONS = {
       'no settings.plugin.item slot was injected',
       'the "plugins tab" vocabulary is absent as well (no keyed-card leftovers)',
     ],
+    // Measured in the t2 audit: a second inject/register also reddens the two slot-count
+    // checks and the injected-slot-name list, on top of the three always-on invariants.
+    // The old three-entry declaration was incomplete (it repeated `always`).
     expectFail: [
+      'exactly two slots.inject happened (rev-10 adds the session-header bell)',
+      'the injected slot names',
+      'exactly two slots.register happened (the section + the bell)',
       'no settings.plugin.item registration ledger entry',
       'no settings.plugin.item slot was injected',
       'the "plugins tab" vocabulary is absent as well (no keyed-card leftovers)',
@@ -177,6 +345,7 @@ const MUTATIONS = {
       const anchor = 'ctx.slots.inject(\'settings.section\', function () {';
       const at = source.indexOf(anchor);
       if (at < 0) throw new Error('mutation anchor not found');
+      if (source.indexOf(anchor, at + anchor.length) >= 0) throw new Error('mutation anchor is not unique: settings.section inject');
       const rogue = "ctx.slots.inject('settings.plugin.item', function () { return ctx.slots.register({ name: 'settings.plugin.item', key: NS }, ChimeSection); });\n          ";
       return source.slice(0, at) + rogue + source.slice(at);
     },
@@ -568,11 +737,11 @@ report.group('0. the bytes under test are the shipped ones');
 report.note('file', CLIENT_PATH);
 report.note('bytes', CLIENT_BYTES);
 report.note('sha256', CLIENT_SHA256);
-report.same('lib/client.js byte count is what rev-11 claims', CLIENT_BYTES, 137971);
+report.same('lib/client.js byte count is what rev-20 claims', CLIENT_BYTES, 158549);
 report.same(
-  'lib/client.js sha256 is what rev-11 claims',
+  'lib/client.js sha256 is what rev-20 claims',
   CLIENT_SHA256,
-  '36BDD86B4D09A96492FCD6819913A50117E17EB6017F07914E98955A02D6E9CB',
+  '4B6C8B91F0C294A0E2C561934C8ED627C7D3F937CFF33904A8FACA651A5949F3',
 );
 report.same('lib/client.js has no top-level import/export (it is a classic script)', /^import |^export /m.test(CLIENT_SOURCE), false);
 
@@ -726,10 +895,10 @@ const text = textOf(tree);
 
 report.same('the page heading is an <h2> carrying 通知提醒', textOf(byType(tree, 'h2')[0]) , '通知提醒');
 report.same('exactly one <h2> on the page', byType(tree, 'h2').length, 1);
-report.check('the intro line is present', text.includes('宿主向你申请权限时响一次'), text.slice(0, 90));
+report.check('the intro line is present', text.includes('DSH 向你申请权限时响一次'), text.slice(0, 90));
 report.check('the section carries the plugin data attribute for a browser probe', byType(tree, 'section')[0]?.props?.['data-plugin'] === 'dsh-approval-chime');
-report.same('the bundleRevision badge shows the rev-11 stamp', textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev')), diagnostics.revision);
-report.check('the revision stamp is the rev-11 one', /rev-11/.test(diagnostics.revision), diagnostics.revision);
+report.same('the bundleRevision badge shows the rev-20 stamp', textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev')), diagnostics.revision);
+report.check('the revision stamp is the rev-20 one', /rev-20/.test(diagnostics.revision), diagnostics.revision);
 
 const checkbox = inputsOf(tree, 'checkbox')[0];
 report.same('exactly one enable checkbox', inputsOf(tree, 'checkbox').length, 1);
@@ -768,24 +937,30 @@ report.check('the counters row shows the last tone/volume', textOf(statsRow).inc
 report.check('the counters row shows the audio state', textOf(statsRow).includes('音频状态: 未创建'), textOf(statsRow));
 report.check('the counters row shows the approvals-seen count', textOf(statsRow).includes('已见审批: 0'), textOf(statsRow));
 
+const supportsBody = cssBlockBody(stylesheet ?? '', '@supports (appearance:base-select)');
+const pickerCss = cssResolve(cssRules(supportsBody === null ? '' : supportsBody.body), CARD_PICKER_SELECTOR);
+const optionCss = cssResolve(cssRules(supportsBody === null ? '' : supportsBody.body), CARD_OPTION_SELECTOR);
+const pickerMaxHeight = cssValue(pickerCss, 'max-height');
 report.check(
-  'the ::picker(select) block keeps box-sizing:content-box;max-height:84px',
-  /::picker\(select\)\{[^}]*box-sizing:content-box;max-height:84px;/.test(stylesheet ?? ''),
-  (stylesheet ?? '').match(/::picker\(select\)\{[^}]*\}/)?.[0],
+  'the card list\'s ::picker(select) resolves box-sizing:content-box AND max-height:84px',
+  cssValue(pickerCss, 'box-sizing') === 'content-box' && pickerMaxHeight === '84px',
+  `${pickerCss.participants.length} rule(s) name the card list: ${JSON.stringify(Object.fromEntries(pickerCss.declarations))}`,
 );
 report.check('the popup keeps border-radius:10px', /::picker\(select\)\{[^}]*border-radius:10px;/.test(stylesheet ?? ''), (stylesheet ?? '').match(/::picker\(select\)\{[^}]*border-radius:10px;/)?.[0]);
 report.same('the declared row count is 3', diagnostics.toneRows, 3);
-const styledOptionRule = (stylesheet ?? '').split('}').map((part) => `${part}}`).find((part) => /^\.dacCard select option\{/.test(part) && /line-height:/.test(part)) ?? '';
 report.check(
   '3 rows are exactly what the popup shows: max-height 84px = 3 x (line-height 20px + 4px padding x2)',
-  /line-height:20px;/.test(styledOptionRule) && 3 * (20 + 4 + 4) === 84,
-  styledOptionRule || 'no styled option rule found',
+  cssValue(optionCss, 'line-height') === '20px' && cssValue(optionCss, 'padding') === '4px 9px'
+    && pickerMaxHeight === `${3 * (20 + 4 + 4)}px` && 3 * (20 + 4 + 4) === 84,
+  `option line-height=${JSON.stringify(cssValue(optionCss, 'line-height'))}, option padding=${JSON.stringify(cssValue(optionCss, 'padding'))}, card max-height=${JSON.stringify(pickerMaxHeight)}, 3 rows=${3 * (20 + 4 + 4)}px`,
 );
 report.check('the popup scrolls rather than growing', /::picker\(select\)\{[^}]*overflow-y:auto;/.test(stylesheet ?? ''), (stylesheet ?? '').match(/::picker\(select\)\{[^}]*overflow-y:auto;/)?.[0]);
+const fallbackOptionCss = cssResolve(cssRules(cssOutsideSupports(stylesheet ?? '')), CARD_OPTION_SELECTOR);
 report.check(
   'the expanded popup inherits the card palette (option colours are stated)',
-  /\.dacCard select option\{background-color:var\(--dsw-alias-bg-layer-1/.test(stylesheet ?? ''),
-  (stylesheet ?? '').match(/\.dacCard select option\{background-color[^}]*\}/)?.[0],
+  (cssValue(fallbackOptionCss, 'background-color') ?? '').startsWith('var(--dsw-alias-bg-layer-1')
+    && (cssValue(fallbackOptionCss, 'color') ?? '').startsWith('var(--dsw-alias-label-primary'),
+  `card option fallback rules=${fallbackOptionCss.participants.length}: ${JSON.stringify(Object.fromEntries(fallbackOptionCss.declarations))}`,
 );
 
 /* ------------------------------- 5. the "custom tone selected" state keeps 移除 */
@@ -846,6 +1021,20 @@ report.group('7. the probe can falsify a regression, not just confirm the fix');
 /** The set of checks a mutant is REQUIRED to turn red. */
 const FAILING_SET = new Set(report.rows.filter((row) => !row.passed).map((row) => row.name));
 
+/**
+ * A mutant is "caught exactly as declared" when ALL THREE hold:
+ *   1. every check in `expectFail` is red,
+ *   2. NO check outside `expectFail` is red (a drifting red set means the declaration and
+ *      the probe disagree -- one of them is wrong and the run must not hide that), and
+ *   3. the evaluated bytes provably differ from the shipped ones (a dead/no-op mutation
+ *      must never look like a pass).
+ * Only that combination may exit 0 in mutation mode, which is the discipline
+ * probe-11/probe-18/probe-19 already use. Before the t2 audit this probe exited 1 whenever
+ * ANY check was red -- i.e. exactly when the mutation WAS caught -- so all five mutants
+ * reported a false red and the driver, not the product, was the defect.
+ */
+let mutationCaught = false;
+
 if (MUTATION === null) {
   report.note('mutation mode', 'off — run with --mutate=<name> to prove the checks bite');
   report.note('available mutations', Object.keys(MUTATIONS));
@@ -858,14 +1047,33 @@ if (MUTATION === null) {
     missing.length === 0,
     missing.length === 0 ? `all ${MUTATION.expectFail.length} expected failures observed` : `NOT caught: ${JSON.stringify(missing)}`,
   );
+  const declared = new Set(MUTATION.expectFail);
+  const surprise = [...FAILING_SET].filter((name) => !declared.has(name));
+  report.check(
+    `no undeclared check turned red under "${MUTATION.what}"`,
+    surprise.length === 0,
+    surprise.length === 0
+      ? `the red set is exactly the ${declared.size} declared check(s) (measured ${FAILING_SET.size})`
+      : `UNDECLARED red: ${JSON.stringify(surprise)}`,
+  );
   for (const name of MUTATION.always ?? []) {
     report.check(`the always-on invariant "${name}" also failed (as required)`, FAILING_SET.has(name), FAILING_SET.has(name) ? 'failed as required' : 'unexpectedly still passed');
   }
-  report.check('the mutation really rewrote the evaluated source', EVALUATED_SOURCE !== CLIENT_SOURCE, `${Buffer.byteLength(EVALUATED_SOURCE, 'utf8')} vs ${CLIENT_BYTES} bytes`);
+  const evaluatedHash = createHash('sha256').update(Buffer.from(EVALUATED_SOURCE, 'utf8')).digest('hex').toUpperCase();
+  const sourceChanged = evaluatedHash !== CLIENT_SHA256;
+  report.check(
+    'the mutation really rewrote the evaluated source',
+    sourceChanged,
+    `${Buffer.byteLength(EVALUATED_SOURCE, 'utf8')} vs ${CLIENT_BYTES} bytes; sha256 ${evaluatedHash.slice(0, 16)} vs ${CLIENT_SHA256.slice(0, 16)}${sourceChanged ? '' : ' — DEAD MUTATION: it changed nothing'}`,
+  );
+  mutationCaught = missing.length === 0 && surprise.length === 0 && sourceChanged;
 }
 
 /* --------------------------------------------------------------------- verdict */
 
 const verdict = report.done();
-if (MUTATION !== null && verdict.failed > 0) process.exitCode = 1;
-if (verdict.failed > 0) process.exitCode = 1;
+// Mutation mode answers ONE question -- "was this mutant caught exactly as declared?" -- so
+// the expected red assertions are the outcome under test, not a regression. Without
+// --mutate the exit code is the plain shipped-suite verdict.
+if (MUTATION !== null) process.exitCode = mutationCaught ? 0 : 1;
+else if (verdict.failed > 0) process.exitCode = 1;

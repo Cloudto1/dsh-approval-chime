@@ -65,7 +65,6 @@ const accept = [
   ['built-in bell', { tone: 'bell' }, 'bell'],
   ['built-in beep', { tone: 'beep' }, 'beep'],
   ['custom:<lowercase uuid>', { tone: `custom:${ID_B}` }, `custom:${ID_B}`],
-  ['custom:<UPPERCASE uuid>', { tone: `custom:${ID_B.toUpperCase()}` }, `custom:${ID_B.toUpperCase()}`],
   ['no tone at all (default applies)', {}, 'chime'],
   ['roster entry', { custom: [{ id: ID_A, name: 'a.mp3' }] }, undefined],
 ];
@@ -86,12 +85,21 @@ const reject = [
   ['custom:<uuid> plus trailing text', { tone: `custom:${ID_A}x` }],
   ['custom:<uuid> plus a newline (anchoring check)', { tone: `custom:${ID_A}\n` }],
   ['custom:<uuid> with an extra dash group', { tone: `custom:${ID_A}-1` }],
+  // rev-6 (N3) rebaseline: the id pattern is lowercase-hex only, so an UPPERCASE uuid
+  // is refused by the schema (lib/index.js TONE_PATTERN) instead of being accepted and
+  // later 404-ing against the case-sensitive file lookup.
+  ['custom:<UPPERCASE uuid> (rev-6 N3: ids are lowercase-only)', { tone: `custom:${ID_B.toUpperCase()}` }],
   ['a non-string tone', { tone: 7 }],
   ['volume above the maximum', { volume: 101 }],
   ['volume below the minimum', { volume: -1 }],
   ['a string volume', { volume: '70' }],
   ['custom as an object', { custom: { id: ID_A } }],
   ['custom entry with a numeric id', { custom: [{ id: 7, name: 'x' }] }],
+  // rev-6 (N3) rebaseline: the roster id must be a lowercase uuid, so the malformed ids
+  // are refused by the SCHEMA now — the browser half's own filter is exercised in
+  // section 2 against a hand-written (unvalidated) scope value below.
+  ['a roster id that is not a uuid', { custom: [{ id: 'not-a-uuid', name: 'y' }] }],
+  ['a roster id with a path', { custom: [{ id: '../../evil', name: 'x' }] }],
 ];
 for (const [label, input] of reject) {
   const result = validate(input);
@@ -105,7 +113,7 @@ log.note('so the documented "custom: [{id,name}]" is really "{id, name?}": the b
 const manyRoster = validate({ custom: Array.from({ length: 5000 }, (_, index) => ({ id: `${String(index).padStart(8, '0')}-0000-4000-8000-000000000000`, name: 'n'.repeat(1000) })) });
 log.check('the schema accepts an unbounded roster (5000 entries, 1000-char names)', manyRoster.ok === true, manyRoster.ok ? `${manyRoster.value.custom.length} entries kept` : manyRoster.error.split('\n')[0]);
 const weirdIds = validate({ custom: [{ id: '../../evil', name: 'x' }, { id: 'not-a-uuid', name: 'y' }] });
-log.check('the schema accepts non-uuid roster ids (the browser half must filter them)', weirdIds.ok === true, JSON.stringify(weirdIds.ok ? weirdIds.value.custom : weirdIds.error));
+log.check('the schema refuses non-uuid roster ids (rev-6 N3 closed the widening)', weirdIds.ok === false, JSON.stringify(weirdIds.ok ? weirdIds.value.custom : weirdIds.error));
 
 /* --------------------------------------------------- 2. roster normalisation */
 
@@ -137,7 +145,7 @@ const harness = createClientHarness(sandbox, { scope });
 harness.apply();
 const diagnostics = harness.diagnostics;
 log.check('diagnostics surface installed', diagnostics !== null && typeof diagnostics === 'object');
-log.check('revision stamp names rev-4', String(diagnostics.revision).includes('rev-4'), String(diagnostics.revision));
+log.check('revision stamp names the revision under test (rev-20)', String(diagnostics.revision).includes('rev-20'), String(diagnostics.revision));
 log.equal('diagnostics.toneRows', diagnostics.toneRows, 3);
 log.equal('diagnostics.customPrefix', diagnostics.customPrefix, 'custom:');
 log.deepEqual('master gain is unchanged by rev-4', diagnostics.masterGain, 0.6);
@@ -149,16 +157,23 @@ log.deepEqual(
     { id: ID_A, name: 'first.mp3' },
     { id: ID_B, name: 'second.wav' },
     { id: ID_C, name: ID_C },
-    { id: ID_B.toUpperCase(), name: 'UPPERCASE uuid' },
   ],
 );
 log.deepEqual(
   'option order is imports (import order) then the built-ins',
   diagnostics.toneOptions(),
-  [`custom:${ID_A}`, `custom:${ID_B}`, `custom:${ID_C}`, `custom:${ID_B.toUpperCase()}`, 'chime', 'bell', 'beep'],
+  [`custom:${ID_A}`, `custom:${ID_B}`, `custom:${ID_C}`, 'chime', 'bell', 'beep'],
+);
+log.check(
+  'a MIXED-CASE roster id is dropped by the browser half too (rev-6 N3: lowercase-uuid ids only)',
+  diagnostics.custom().every((entry) => entry.id !== ID_B.toUpperCase()) &&
+    diagnostics.toneOptions().every((value) => value !== `custom:${ID_B.toUpperCase()}`),
+  `roster=${JSON.stringify(diagnostics.custom().map((entry) => entry.id))} options=${JSON.stringify(diagnostics.toneOptions())}`,
 );
 log.note(
-  'an UPPERCASE uuid survives both the schema and readRoster, but the host lookup is case-sensitive (probe-7: GET with an uppercase id of an existing file -> 404 "audio not found") — low, reachable only by hand-editing settings.yaml',
+  'rebaselined at rev-15: the UPPERCASE-uuid entry in the hand-written roster above is gone from BOTH sides. ' +
+    'The schema refuses a mixed-case id (section 1) and the client filters it out again (rev-6 N3: readRoster keys on the lowercase-uuid pattern); ' +
+    'the host lookup stays case-sensitive, so an id that cannot be lowercased cannot be resolved.',
 );
 
 const longName = 'L'.repeat(200000);
@@ -167,8 +182,11 @@ const capSandbox = createClientSandbox();
 const capHarness = createClientHarness(capSandbox, { scope: capScope });
 capHarness.apply();
 const cappedRoster = capHarness.diagnostics.custom();
-log.equal('a 200k-character display name is NOT bounded on the client', String(cappedRoster[0]?.name).length, 200000);
-log.note(`readRoster keeps the name verbatim (length ${String(cappedRoster[0]?.name).length}); the host truncates only the upload echo, not the stored roster`);
+/* rev-5 (D4/F4) rebaseline: the client bounds every display name to 120 CODE POINTS
+ * (lib/client.js `clampName` → NAME_LIMIT = 120), so a hand-edited 200k name can no
+ * longer reach the rendered option. */
+log.equal('a 200k-character display name IS bounded on the client (rev-5 D4/F4: 120 code points)', String(cappedRoster[0]?.name).length, 120);
+log.note(`readRoster bounds the name to ${String(cappedRoster[0]?.name).length} code points (the host bounds its upload echo the same way); an unbounded name is no longer rendered`);
 
 const overflowRoster = Array.from({ length: 60 }, (_, index) => ({
   id: `${String(index).padStart(8, '0')}-1111-4111-8111-111111111111`,
@@ -266,7 +284,13 @@ log.check('the style tag was injected', css.length > 0, `${css.length} character
 const supports = extractSupportsBlock(css, '(appearance:base-select)');
 log.check('the @supports (appearance:base-select) block exists and is balanced', supports !== null && supports.body.length > 0, supports === null ? 'no block' : `body ${supports.body.length} chars`);
 if (supports !== null) {
-  log.check('max-height:92px sits INSIDE the @supports block', supports.body.includes('max-height:92px'), supports.body.slice(0, 200));
+  // rev-12 rebaseline: the two tone pickers now share one declaration set and differ
+  // only in their row count. The card's cap is exactly TONE_ROWS * 28px = 84px; the
+  // 92px the rev-4 probe looked for was the previous border-box box that clipped its
+  // third row (lib/client.js:1851-1864 records that as review R5-1). The popover's cap
+  // is one row longer plus its 8px slack: 4 * 28 + 8 = 120px.
+  log.check('the card picker cap (84px = 3 rows) sits INSIDE the @supports block', supports.body.includes('max-height:84px'), supports.body.slice(0, 200));
+  log.check('the popover picker cap (120px = 4 rows + 8px slack) sits INSIDE the same block', supports.body.includes('max-height:120px'), supports.body.slice(0, 200));
   log.check('overflow-y:auto sits INSIDE the @supports block', supports.body.includes('overflow-y:auto'), '');
   log.check('the select itself opts into base-select inside the same block', supports.body.includes('select{appearance:base-select;}'), '');
   log.check('the picker keeps its 10px radius inside the same block', supports.body.includes('border-radius:10px'), '');
@@ -275,16 +299,22 @@ if (supports !== null) {
   log.check('the picker has 4px padding', supports.body.includes('::picker(select){appearance:base-select;margin-top:4px;padding:4px;'), '');
 }
 const maxHeightCount = css.split('max-height').length - 1;
-log.equal('max-height appears exactly once in the whole sheet', maxHeightCount, 1);
+log.equal('max-height appears exactly twice — the card cap and the popover cap (rev-12 split them)', maxHeightCount, 2);
 const outside = css.replace(supports === null ? '' : supports.body, '');
 log.check('no max-height leaks outside the @supports block', outside.includes('max-height') === false, outside.includes('max-height') ? 'found outside' : 'clean');
 const rowMath = 3 * 28; // TONE_ROWS * TONE_ROW_PX
 log.equal('the row height the comment claims (20px line box + 2x4px padding)', 28, 20 + 4 * 2);
-log.equal('3 rows + the picker 2x4px padding', rowMath + 8, 92);
-log.check('diagnostics agrees with the CSS cap', diagnostics.toneRows * 28 + 8 === 92, `toneRows=${diagnostics.toneRows}`);
+log.equal('the card cap is exactly 3 rows (3 x 28px, no picker padding baked in)', rowMath, 84);
+log.check(
+  'diagnostics agrees with BOTH CSS caps (card = toneRows rows, popover = toneRows + 1 rows + 8px slack)',
+  supports !== null &&
+    supports.body.includes(`max-height:${diagnostics.toneRows * 28}px;`) &&
+    supports.body.includes(`max-height:${(diagnostics.toneRows + 1) * 28 + 8}px;`),
+  `toneRows=${diagnostics.toneRows}`,
+);
 log.unproven(
   'CSS-ROLL',
-  'whether 92px really shows exactly three rows and then a scrollbar is a rendering fact: it needs a browser with appearance:base-select (Chrome/Edge >= 135). This probe can only prove the arithmetic and the selector placement.',
+  'whether 84px really shows exactly three rows (and 120px four) and then a scrollbar is a rendering fact: it needs a browser with appearance:base-select (Chrome/Edge >= 135). This probe can only prove the arithmetic and the selector placement.',
 );
 
 /* --------------------------------------------------- 5. import flow (append!) */
@@ -295,11 +325,27 @@ const importSandbox = createClientSandbox();
 const importScope = createScope({ enabled: true, volume: 70, tone: 'chime', custom: [] });
 const importHarness = createClientHarness(importSandbox, { scope: importScope });
 const fetchCalls = [];
+/**
+ * rev-10 rebaseline: since rev-10 the bundle also reads the per-session override table
+ * once at mount (`refreshSessions()` → fetch(SESSIONS_ROUTE), lib/client.js:2982/1162).
+ * That request is NOT an import request, so it is counted on its own (asserted below)
+ * and kept out of `fetchCalls` — otherwise `fetchCalls[0]` is the mount read and every
+ * "the upload …" assertion below reads the wrong request.
+ */
+const MOUNT_READ_URL = plugin.SESSIONS_ROUTE;
+let mountReads = 0;
+const recordFetch = (url, options = {}) => {
+  if (String(url) === MOUNT_READ_URL) {
+    mountReads += 1;
+    return;
+  }
+  fetchCalls.push({ url, options });
+};
 const audioStub = createAudioStub();
 importSandbox.window.AudioContext = audioStub.AudioContext;
 let nextId = ID_A;
 importSandbox.setGlobal('fetch', (url, options = {}) => {
-  fetchCalls.push({ url, options });
+  recordFetch(url, options);
   if (options.method === 'POST') {
     const id = nextId;
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, id, name: 'uploaded.mp3', ext: 'mp3', type: 'audio/mpeg', bytes: 12 }) });
@@ -309,6 +355,7 @@ importSandbox.setGlobal('fetch', (url, options = {}) => {
 });
 importHarness.apply();
 importHarness.mountCard({});
+log.equal('the mount-time read of the per-session table happened once and is not an import request (rev-10)', mountReads, 1);
 
 const fileOne = { size: 12, type: 'audio/mpeg', name: 'first upload.mp3' };
 importHarness.chooseFile(fileOne);
@@ -353,7 +400,7 @@ await settle();
 log.equal('a browser without fetch imports nothing', fetchCalls.length, savedFetch);
 log.check('and the card explains why', JSON.stringify(importHarness.mini.getTree()).includes('不支持文件导入'), 'looked for the "当前浏览器不支持文件导入" copy');
 importSandbox.setGlobal('fetch', (url, options = {}) => {
-  fetchCalls.push({ url, options });
+  recordFetch(url, options);
   if (options.method === 'POST') {
     return Promise.resolve({ ok: false, status: 415, json: () => Promise.resolve({ ok: false, error: 'unsupported audio type "txt"' }) });
   }

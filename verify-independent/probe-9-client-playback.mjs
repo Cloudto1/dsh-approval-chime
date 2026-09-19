@@ -48,17 +48,29 @@ function build({ fetchImpl, audioOptions = {}, settings = {}, react = {} } = {})
   const scope = createScope({ enabled: true, volume: 50, tone: `custom:${ID_A}`, custom: [{ id: ID_A, name: 'a.mp3' }, { id: ID_B, name: 'b.mp3' }], ...settings });
   const audioStub = createAudioStub(audioOptions);
   sandbox.window.AudioContext = audioStub.AudioContext;
+  /** Every request, including the mount-time table read. */
   const calls = [];
+  /**
+   * rev-10 rebaseline: since rev-10 the bundle reads the per-session override table once
+   * at mount (`refreshSessions()` → fetch(SESSIONS_ROUTE), lib/client.js:2982/1162). That
+   * read is not a sample fetch, so the "N fetches" assertions below count `sampleCalls`
+   * and the mount read is asserted separately — the raw `calls` ledger is kept intact.
+   */
+  const sampleCalls = [];
+  let mountReads = 0;
   if (fetchImpl !== undefined) {
     sandbox.setGlobal('fetch', (url, options = {}) => {
-      calls.push({ url, options });
+      const record = { url, options };
+      calls.push(record);
+      if (String(url) === plugin.SESSIONS_ROUTE) mountReads += 1;
+      else sampleCalls.push(record);
       return fetchImpl(url, options, calls);
     });
   }
   const harness = createClientHarness(sandbox, { scope });
   harness.apply();
   harness.mountCard({});
-  return { sandbox, scope, audioStub, harness, calls };
+  return { sandbox, scope, audioStub, harness, calls, sampleCalls, mountReads: () => mountReads };
 }
 
 const okFetch = (bytes = 32) => (url, options = {}) => {
@@ -84,8 +96,9 @@ log.equal('the preview counter moved', main.harness.diagnostics.stats().previews
 log.equal('the trigger counter did not', main.harness.diagnostics.stats().triggers, 0);
 log.equal('lastGain records the same value', main.harness.diagnostics.stats().lastGain, (50 / 100) * GAIN);
 log.equal('lastTone records the imported id', main.harness.diagnostics.stats().lastTone, `custom:${ID_A}`);
-log.equal('the sample was fetched from the audio route', main.calls[0]?.url, `${plugin.AUDIO_ROUTE}/${ID_A}`);
-log.equal('the sample fetch asks for same-origin credentials', main.calls[0]?.options.credentials, 'same-origin');
+log.equal('the sample was fetched from the audio route', main.sampleCalls[0]?.url, `${plugin.AUDIO_ROUTE}/${ID_A}`);
+log.equal('the sample fetch asks for same-origin credentials', main.sampleCalls[0]?.options.credentials, 'same-origin');
+log.equal('the mount read of the per-session table is not a sample fetch (rev-10)', main.mountReads(), 1);
 
 const synth = build({ fetchImpl: okFetch(), settings: { tone: 'bell', custom: [] } });
 synth.harness.diagnostics.preview();
@@ -199,7 +212,7 @@ twoIds.harness.diagnostics.preview();
 twoIds.scope.poke('tone', `custom:${ID_B}`);
 twoIds.harness.diagnostics.preview();
 await settle();
-log.equal('two different ids -> two fetches', twoIds.calls.length, 2);
+log.equal('two different ids -> two fetches', twoIds.sampleCalls.length, 2);
 log.equal('two different ids -> two decodes', twoIds.audioStub.track.decoded.length, 2);
 log.equal('two different ids -> two sources', twoIds.audioStub.track.sources.length, 2);
 log.check(
@@ -207,7 +220,7 @@ log.check(
   twoIds.audioStub.track.sources[0]?.buffer?.byteLength === 16 && twoIds.audioStub.track.sources[1]?.buffer?.byteLength === 64,
   `${twoIds.audioStub.track.sources[0]?.buffer?.byteLength} / ${twoIds.audioStub.track.sources[1]?.buffer?.byteLength}`,
 );
-log.check('the fetch URLs are the two distinct ids', twoIds.calls[0]?.url !== twoIds.calls[1]?.url, twoIds.calls.map((call) => call.url).join(' , '));
+log.check('the fetch URLs are the two distinct ids', twoIds.sampleCalls[0]?.url !== twoIds.sampleCalls[1]?.url, twoIds.sampleCalls.map((call) => call.url).join(' , '));
 log.equal('still no unhandled rejection', hazards.rejections.length, 0);
 
 /* ------------------------------------------------------- 4. approval-triggered path */
@@ -253,7 +266,7 @@ log.section('5. removing a tone drops its decoded buffer');
 const remove = build({ fetchImpl: okFetch() });
 remove.harness.diagnostics.preview();
 await settle();
-log.equal('played once (one fetch)', remove.calls.length, 1);
+log.equal('played once (one fetch)', remove.sampleCalls.length, 1);
 remove.harness.clickButton('移除');
 await settle();
 remove.scope.poke('tone', `custom:${ID_A}`);

@@ -15,7 +15,7 @@
 | 我的独立仪器 1 | `.scratch/reviewer-r5/reqcheck-rev5.mjs` —— 我 t2 探针的 rev-5 版：自带 React hook 运行时 / 镜像真实平台的 settings-scope 桩 / 假 DOM、假 WebAudio、假 fetch，在 `node:vm` 里执行**真实 `lib/client.js`**；**不 import** `verify/_harness.mjs`、也不 import `verify-independent/kit/**`（与 t1、t3 的仪器都无关）。**69 项断言全绿** |
 | 我的独立仪器 2 | `.scratch/reviewer-r5/reqcheck-host-413.mjs` —— 真实 `node:http` 服务器 + 插件**真实路由处理器**（经 `registerAudioRoutes` 捕获）+ 裸 socket。**9 项断言全绿**，`audio/` 目录前后一致 |
 | 被复审的报告 | `docs/rev5-复验.md`（t3，27 930 B，317 行） |
-| 上游两轮 | `docs/rev4-独立验证.md`（宿主半）、`docs/rev4-浏览器半独立验证.md`（t1）、`docs/rev4-需求符合性审查.md`（我 t2） |
+| 上游两轮 | `docs/rev4-独立验证.md`（DSH 侧）、`docs/rev4-浏览器侧独立验证.md`（t1）、`docs/rev4-需求符合性审查.md`（我 t2） |
 | 环境限制 | Edge 153 在，但沙箱禁命名管道 → Chromium Mojo FATAL，**无引擎可测**（该限制由 t1 的 probe-13 日志记录，我在 t2 已独立复核）；本机无 React |
 
 **本次复审覆盖的原始输出**（我的）：
@@ -106,13 +106,13 @@ node .scratch/reviewer-r5/reqcheck-host-413.mjs    →  9 passed / 0 failed（D1
 
 ### 3.2 显示名按**码点**截到 120 → 不构成回退
 
-- 实测：200 000 字的名字渲染为 **120 码点**；控制字节被剥（`'a\u0000b\u001f.wav'` → `ab.wav`）；`119×'x' + 😀 + tail` 截断后 emoji **完好**、无孤立代理；空名回落到 id；浏览器半与宿主**同界**（我的探针动态 import 宿主：`NAME_LIMIT === 120`）。
-- 可读性：120 字符远超文件名常规长度，正常上传路径的显示名本来就 ≤120（宿主侧同值），所以**只有手改 settings 文档**才可能看到截断；截断不改变"顺序/可选性"任何语义。
-- 残余观察（**低**，与 rev-4 相同、非新增）：`clampName` 不做 trim，纯空白名（`'   '`）仍会渲染成"看似空行"的选项（我的探针实测 `renderedAs="   "`）。宿主上传路径会 trim，因此正常路径不可达。若要彻底闭合 F4 的原始描述，可在 `clampName` 里加一次 `trim`。
+- 实测：200 000 字的名字渲染为 **120 码点**；控制字节被剥（`'a\u0000b\u001f.wav'` → `ab.wav`）；`119×'x' + 😀 + tail` 截断后 emoji **完好**、无孤立代理；空名回落到 id；浏览器侧与 DSH**同界**（我的探针动态 import DSH：`NAME_LIMIT === 120`）。
+- 可读性：120 字符远超文件名常规长度，正常上传路径的显示名本来就 ≤120（DSH 侧同值），所以**只有手改 settings 文档**才可能看到截断；截断不改变"顺序/可选性"任何语义。
+- 残余观察（**低**，与 rev-4 相同、非新增）：`clampName` 不做 trim，纯空白名（`'   '`）仍会渲染成"看似空行"的选项（我的探针实测 `renderedAs="   "`）。DSH 上传路径会 trim，因此正常路径不可达。若要彻底闭合 F4 的原始描述，可在 `clampName` 里加一次 `trim`。
 
 ### 3.3 F6 让 `.mp3` 与尾随空格名被接受 → **不**与 README「扩展名白名单」冲突
 
-- 白名单仍严格生效：宿主 `extensionOf` 取**最后一个点**后的子串，非白名单仍 415（t3 实测 `a.` / `a.aaa` / `note txt` / `ring. mp3` / 空白 / 空 → 415；我复核了 `lib/index.js:424-427`、`:527-535`）。变的只是"取扩展名之前先 trim、且允许基名为空/点开头"这两点——`ring.mp3 ` 在 macOS/Linux 是合法文件名，接受它是**修好了原本的误拒**。
+- 白名单仍严格生效：DSH `extensionOf` 取**最后一个点**后的子串，非白名单仍 415（t3 实测 `a.` / `a.aaa` / `note txt` / `ring. mp3` / 空白 / 空 → 415；我复核了 `lib/index.js:424-427`、`:527-535`）。变的只是"取扩展名之前先 trim、且允许基名为空/点开头"这两点——`ring.mp3 ` 在 macOS/Linux 是合法文件名，接受它是**修好了原本的误拒**。
 - 文档同步：`README.md:80`（5 MB / 白名单 / 413 先读干再应答 / 415）与 `README.md:82`（**先 trim、扩展名按最后一个点、无扩展名按 MIME 兜底、id 是大小写敏感的小写 uuid**）都已更新 → 承诺与行为一致。
 - 观感项（**低**，t3 的 O2）：名字本身就是扩展名时（`.mp3`、`..mp3`）显示名原样成为选项标签 —— 仅观感。
 
@@ -133,7 +133,7 @@ node .scratch/reviewer-r5/reqcheck-host-413.mjs    →  9 passed / 0 failed（D1
 | D1 修复：413 真的上线 | **真实 `node:http` + 裸 socket**：content-length / chunked 快 / chunked 4ms 帧三种都收到 `HTTP/1.1 413` + 可解析 JSON；3 s 兜底定时器 1 个、`unref`、用后清除（实测 3016 ms 收到）；宽限边界 10.00 MB→413 / 11.25 MB→RST | 硬（**我用自写 socket 探针独立复现了 content-length 与 chunked 两种，并补了正常上传往返与零残留**） |
 | F1 修复 | 四条子要求逐条断言 + "app 侧订阅错误日志为空"这一独立观测面 | 硬（我独立复现：不抛、计数 +1、`lastError` 有值、按钮复位、名册未写、无未处理 rejection） |
 | D2 / D3 修复 | **真实 `@deepseek-ai/schemastery`** 校验 schema；真实路由 + 真实文件对（`<id>.aaa` 与 `<id>.mp3` 并存 → GET 给 `.mp3`、DELETE 只删 `.mp3`） | 硬 |
-| D4 / F5 / F6 修复 | 两侧同输入逐字节比对 + 14 种名字的接受/拒绝表 + 浏览器半真实请求头 → 真实路由接受 | 硬（我独立复现 D4 的 120 码点/控制字节/代理对，以及 F6 的 7 种请求头） |
+| D4 / F5 / F6 修复 | 两侧同输入逐字节比对 + 14 种名字的接受/拒绝表 + 浏览器侧真实请求头 → 真实路由接受 | 硬（我独立复现 D4 的 120 码点/控制字节/代理对，以及 F6 的 7 种请求头） |
 | R4-CAP / R4-RACE 修复 | 上传前拒绝用"0 请求"证明；竞态用 deferred fetch 精确制造；并发两条只留 50 项 | 硬（我独立复现：0 POST、DELETE 新 id、合并不丢） |
 | F2/F3 措辞与计数 | 预览/审批两条入口分别测 | 硬（我独立复现 F3） |
 | R5-1 的**算术**部分 | 执行真实 `injectStyles()` 解析样式表 + 盒模型算术 | 硬（我独立复现，结论一致） |
@@ -142,7 +142,7 @@ node .scratch/reviewer-r5/reqcheck-host-413.mjs    →  9 passed / 0 failed（D1
 ### 4.2 哪些是**推断/未证实**（t3 自己已列，我核对无误）
 
 - §4-U1 真实渲染（3 整行 + 滚动条）与 O4 的 10px 外扩：无引擎 → **留白正确**（也正是我 §2.2 的 M1/M2/M4）。
-- §4-U2 UA 对 `::picker(select)` 的 `box-sizing`：t3 明确写成"外部资料结论、条件成立"→ **措辞比 t1/宿主报告更严谨**；且与 rev-5 修复无关。
+- §4-U2 UA 对 `::picker(select)` 的 `box-sizing`：t3 明确写成"外部资料结论、条件成立"→ **措辞比 t1/DSH 报告更严谨**；且与 rev-5 修复无关。
 - §4-U3 载体在 300 s 处断开未完成请求的实际行为（N1 的兜底）：只读了载体源码与 Node 默认值 → 留白正确。
 - O3（`displayName` 的 `audio.<ext>` 兜底不可达）是**推导**不是断言，t3 已标注"未单独断言"。
 
@@ -153,13 +153,13 @@ node .scratch/reviewer-r5/reqcheck-host-413.mjs    →  9 passed / 0 failed（D1
 
 ### 4.4 我 t2 报告里那条被更正的推断（U1）——现状与更新
 
-- t2 我指出**宿主报告**（`docs/rev4-独立验证.md`）U1 里的推断「宿主 CSS 没有 `*{box-sizing:border-box}` 复位……所以 `::picker` 保持初始 `content-box`」**不成立**（`box-sizing` 非继承、`*` 不匹配伪元素；决定它的是 UA 样式表，而 Chromium 的 UA 样式表写的是 `border-box`）。
+- t2 我指出**DSH 报告**（`docs/rev4-独立验证.md`）U1 里的推断「DSH CSS 没有 `*{box-sizing:border-box}` 复位……所以 `::picker` 保持初始 `content-box`」**不成立**（`box-sizing` 非继承、`*` 不匹配伪元素；决定它的是 UA 样式表，而 Chromium 的 UA 样式表写的是 `border-box`）。
 - **该文本至今未被更正**：`docs/rev4-独立验证.md` mtime 仍为 21:02（早于我 21:10 的审查），U1 单元格（现第 189 行）仍写着"所以 `::picker` 保持初始 `content-box`，92px = 84px 行 + 8px 内边距在算术上正好 3 行 … 当前不成立"。对 **rev-4** 而言这句话与事实相反；对 **rev-5** 而言它已**失去意义**（作者显式声明 `content-box`，92px 也不存在了）。
 - 因此我在 `docs/rev4-需求符合性审查.md` 末尾追加了「rev-5 后续状态（t4 更新）」小节：R5-1 已修、EV-1 的**行为影响已消除**、但**报告文本仍需一行更正**（历史记录正确性）。t3 的 §4-U2 已经把这条更正的精神吸收进自己的表达（"条件结论、与修复无关"）。
 
 ---
 
-## 5. 仍需真人浏览器 / 真实宿主确认项（收尾清单）
+## 5. 仍需真人浏览器 / 真实 DSH 确认项（收尾清单）
 
 | # | 项目 | 为什么现在定不了 | 怎么验 |
 | --- | --- | --- | --- |
@@ -168,7 +168,7 @@ node .scratch/reviewer-r5/reqcheck-host-413.mjs    →  9 passed / 0 failed（D1
 | M3 | 文件选择对话框与 `accept="audio/*"` 过滤 | 系统对话框无法 headless 触发 | 点「导入音频」→ 确认弹系统选择器、默认过滤音频；再选一个 `.txt` 看「导入失败: unsupported audio type …」 |
 | M4 | t3 的 O4：弹层是否比 select 宽 10px | 引擎锚定行为未实测 | 量 `::picker(select)` 边框盒宽 vs select 宽；介意就改用 `border-box + 94px` |
 | M5 | 真实音频解码与听感（mp3/wav/ogg）、自动播放策略解锁 | 假 AudioContext 只记图，不解码 | 导入短音频试听；刷新页面不点击等一次审批（应计 `suppressedPolicy`），再点试听后触发第二次 |
-| M6 | 真实宿主端到端"无需刷新"（含持久化） | 需真实 `dsh web` + 浏览器 | 导入 → 下拉立刻出现且选中；重启宿主后名册仍在、可试听；开第二个标签页看同步 |
+| M6 | 真实 DSH 端到端"无需刷新"（含持久化） | 需真实 `dsh web` + 浏览器 | 导入 → 下拉立刻出现且选中；重启 DSH 后名册仍在、可试听；开第二个标签页看同步 |
 | M7 | 不支持 `base-select` 的浏览器降级（原生弹窗列全、取色） | 无此类引擎 | Chrome<135 / Firefox 目视 |
 | M8 | N1 的载体兜底：未完成请求在 300 s 处是否真的被断开 | 需等 5 分钟且要观测载体内 | 裸 socket 发 chunked 一帧后挂住，观察 300 s 后连接被断（亦可给 `readUpload` 加同款 `unref` 兜底，见 §6） |
 
@@ -182,7 +182,7 @@ node .scratch/reviewer-r5/reqcheck-host-413.mjs    →  9 passed / 0 failed（D1
 | --- | --- | --- | --- | --- |
 | **N1** | low | **未过 cap 的 stagnant 请求没有插件级时间上界**：客户端发 chunked 一帧后不动（<5 MB）→ 7 s 内无应答、无插件定时器；最终由载体（未覆写 `requestTimeout`，Node 默认 300 s）兜底 | `lib/index.js:461-493`（`readUpload` 只在超 cap 时 reject）、`:362-415`（`refuseOversized` 只在超限后启动） | `node dsh-approval-chime/verify-independent/probe-14-r5-http-413.mjs` 的 `4b` 组（实测 `status=null, elapsed=7002ms, timers=[]`）；或裸 socket 发一帧后挂住 |
 | **N2** | low | **超过约 2× cap 的流式请求被 RST 而非 413**（"多送一个 cap"的宽限用尽后硬切断，注释已声明） | `lib/index.js:391-394`（`extra > MAX_AUDIO_BYTES → giveUp()`） | probe-14 `5`/`6` 组：7.50 MB / 10.00 MB → 413；11.25 MB → `ECONNRESET`。自带 UI 到不了（`lib/client.js:1284` 先按 `file.size` 拒绝） |
-| **N3** | low | **`custom[].id` 仍大小写不敏感（半边校验）**：schema 里 `custom[].id` 是裸字符串、浏览器半 `CUSTOM_ID` 带 `/i`，而路由与查文件大小写敏感 → 手改文档写大写 id 会渲染出一行**永远播不响的"死选项"** | `lib/index.js:288`、`lib/client.js:96`、`lib/index.js:93` + `:424-450` | 手改 `settings.yaml` 的 `approval-chime.custom[0].id` 为大写 → 卡片可选中该行，试听只增 `suppressedFailed`（真实路由 404）。**补充（我的复核）**：rev-5 把 `tone` 收紧为小写模式后，(a) 选中该行会**写入失败并显示错误**（不再静默存下死音色）；(b) 若手改文档里连 `tone` 也是大写，则该节 schema 校验失败 → scope 永远不 ready → **卡片整块不渲染**（平台对非法节的通用行为，属手改路径的副作用）。建议：客户端 `CUSTOM_ID` 去 `/i`（把大写条目从名册里丢掉），即可让"死选项"消失 |
+| **N3** | low | **`custom[].id` 仍大小写不敏感（半边校验）**：schema 里 `custom[].id` 是裸字符串、浏览器侧 `CUSTOM_ID` 带 `/i`，而路由与查文件大小写敏感 → 手改文档写大写 id 会渲染出一行**永远播不响的"死选项"** | `lib/index.js:288`、`lib/client.js:96`、`lib/index.js:93` + `:424-450` | 手改 `settings.yaml` 的 `approval-chime.custom[0].id` 为大写 → 卡片可选中该行，试听只增 `suppressedFailed`（真实路由 404）。**补充（我的复核）**：rev-5 把 `tone` 收紧为小写模式后，(a) 选中该行会**写入失败并显示错误**（不再静默存下死音色）；(b) 若手改文档里连 `tone` 也是大写，则该节 schema 校验失败 → scope 永远不 ready → **卡片整块不渲染**（平台对非法节的通用行为，属手改路径的副作用）。建议：客户端 `CUSTOM_ID` 去 `/i`（把大写条目从名册里丢掉），即可让"死选项"消失 |
 | **R-RESID** | low | **纯空白显示名仍渲染成空行**（`clampName` 不 trim；与 rev-4 相同，非新增） | `lib/client.js:724-729` | 手改 `custom[0].name = '   '` → 选项行看似空白（我的探针实测 `renderedAs="   "`） |
 | 观察 | — | `.mp3` / `..mp3` 的标签原样显示（观感）；满额时按钮仍可点（提示延迟到选完文件）；`suppressedDisabled` 合并"审批 + 试听"两种来源；`audio/` 里手工造同名目录时 GET 返回干净的 500 JSON | — | 见 t3 §3 观察项 O1–O4 与本文 §3.1/§3.4 |
 
@@ -193,7 +193,7 @@ node .scratch/reviewer-r5/reqcheck-host-413.mjs    →  9 passed / 0 failed（D1
 **理由**
 
 1. **R1–R5 逐条达标**，且 R5 的修复把结论从"依赖 UA 盒模型"变成"内容盒 84px = 3×28px 行高"的**自证式**声明：3 项不滚、第 4 项起滚，两个阈值都由我们自己的 CSS 决定（我的探针 69/69、t3 的 probe-11 31/31 独立复现）。
-2. **rev-5 的 low 修正没有需求层面回退**：满额拒绝改为"上传前拒绝 + 明确文案 + 竞态删孤儿文件"、显示名按码点与宿主同界、扩展名白名单承诺不变且 README 已同步、禁用试听的计数与文案一致（§3）。
+2. **rev-5 的 low 修正没有需求层面回退**：满额拒绝改为"上传前拒绝 + 明确文案 + 竞态删孤儿文件"、显示名按码点与 DSH 同界、扩展名白名单承诺不变且 README 已同步、禁用试听的计数与文案一致（§3）。
 3. **证据强度足够**：t3 的硬结论都建立在真实 socket / 真实 schemastery / 真实路由之上，未证实项留白得当，无伪造或错引（hash、`_raw` 尾部计数、mtime、import 图谱逐一核对）；我另用**两套自写仪器**独立复现了 R5 算术、R4-CAP/RACE、F1/F3/F6/D4 与 D1（69 + 9 断言）。就"测试与实现是否同源"而言：三侧作者分离成立；唯一需要读者留心的是 t1 的六支旧探针被 t3 **按其声明的行为变更更新了期望**（断言只增不减，已文档化）。
 4. **无阻塞项**：残余 N1/N2/N3 + 一条残余观察均为 low，且都属"手改文档才可达"或"第三方客户端才可达"；用户 5 条原话对应的交互路径全部正常。
 5. **仍需真人确认的只有 M1–M8**（滚动条真实 used value/外观、对话框、听感、端到端与持久化、降级、300 s 兜底）。这些都是**收尾验证**，其中 M1/M2 不再影响 R5 的判定（内容盒几何已被作者声明与算术钉死），M4 若要消除 O4 的 10px 观感，可把该规则换成 `box-sizing:border-box;max-height:94px`（内容盒同为 84px，且外框语义与 UA 锚定尺寸一致）——**这是可选优化，不是修正项**。

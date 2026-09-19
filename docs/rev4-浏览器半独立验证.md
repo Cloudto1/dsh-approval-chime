@@ -1,6 +1,6 @@
-# rev-4「导入自定义音频」浏览器半独立验证报告（任务 t1 · verifier）
+# rev-4「导入自定义音频」浏览器侧独立验证报告（任务 t1 · verifier）
 
-> **一句话结论**：rev-4 新增的浏览器半（`lib/client.js`）在本轮 **7 条 claim 的可验证部分全部独立通过、0 条被证伪**；其中 claim 5 与 claim 7 各有一部分子项（引擎级"不执行"、真实渲染/降级语义）因**本机无浏览器、无 React** 只能给出结构性证据，已单独列为**未证实**（§4，没有写成通过）。
+> **一句话结论**：rev-4 新增的浏览器侧（`lib/client.js`）在本轮 **7 条 claim 的可验证部分全部独立通过、0 条被证伪**；其中 claim 5 与 claim 7 各有一部分子项（引擎级"不执行"、真实渲染/降级语义）因**本机无浏览器、无 React** 只能给出结构性证据，已单独列为**未证实**（§4，没有写成通过）。
 > 自写探针共 **262 项独立断言**（39+48+38+65+27+45）全部通过，另有 1 个探针（probe-13）专门记录"环境让哪些测量无法完成"（11/14，3 项失败全部是环境限制，不是被测实现）。
 > 发现 **1 个 medium 健壮性缺口 + 5 个 low 缺陷 + 3 条设计性观察**（§3），均可用最小复现复现；未发现会影响 rev-4 主流程（导入→选中→播放→移除）的缺陷。
 
@@ -61,7 +61,7 @@ node dsh-approval-chime/verify-independent/probe-13-r4-browser.mjs   # 预期 ex
 | 2 | `tone` 指向已删除/不存在 id：卡片仍渲染一行而不是空白；播放只增 `suppressedFailed` 与 `lastError`，不抛未处理 rejection，不影响内置音色 | **PASS** | probe-8（+ 渲染层"值必有匹配 option"不变量） |
 | 3 | fetch 404 / decode 抛错 / `typeof fetch === undefined` 三种情况下内置音色仍发声 | **PASS** | probe-8（另测 reject / 无响应 / 永久挂起） |
 | 4 | 并发与缓存：同 id 并发只 fetch 一次；不同 id 互不干扰；重复播放复用 buffer | **PASS** | probe-9（含"首个请求悬挂时两个触发"） |
-| 5 | HTML 注入面：`name` 进 React 文本节点，含 `<img onerror=...>` 的名字不会被当成 HTML；宿主显示名清洗没有把它变成别的东西 | **半数 PASS / 半数未证实** | probe-12（结构 + 宿主逐字节一致）PASS；**引擎级"不执行"未证实**（§4-U3） |
+| 5 | HTML 注入面：`name` 进 React 文本节点，含 `<img onerror=...>` 的名字不会被当成 HTML；DSH 显示名清洗没有把它变成别的东西 | **半数 PASS / 半数未证实** | probe-12（结构 + DSH 逐字节一致）PASS；**引擎级"不执行"未证实**（§4-U3） |
 | 6 | 音量语义：导入音色与内置音色同 volume 下主增益完全一致；`volume=0` / `enabled=false` 不创建、不播放任何节点 | **PASS** | probe-10（5 档 volume + 边界值 + 两条入口路径分别测） |
 | 7 | 「3 行后滚动」：`max-height` 数值等于 3 个 option 行高（逐步推导）、落在 `@supports (appearance:base-select)` 内、`overflow-y:auto` 同规则 | **静态 PASS / 引擎级未证实** | probe-11（算术 92 = 3×28 + 8，同规则、同 @supports 块）；真实渲染语义与降级行为见 §4-U1/U4 |
 
@@ -111,9 +111,9 @@ node dsh-approval-chime/verify-independent/probe-13-r4-browser.mjs   # 预期 ex
 **顺序不变量**与 `diagnostics.toneOptions()`、与 `settings` 写入顺序三方一致。
 
 **观察（非缺陷）**：
-- 纯空白名（`'   '`）原样保留 → 该行看起来"空"（`lib/client.js:654` 只判 `length > 0`）。宿主在上传时 `.trim()`，所以只有手改 settings 文档才可达。
-- 浏览器半对 `name` **无长度上限**（5000 字原样渲染）。同样只有手改文档可达（宿主上传时截断到 120）。
-- 仅大小写不同的两个 id **不会**被去重（`seen` 大小写敏感，`lib/client.js:650`）；而宿主按文件名 `startsWith` 精确匹配（`lib/index.js:352`），所以大写 id 会渲染成一行但播放时 404 → 记为观察项，正常路径不可达（`randomUUID()` 恒为小写）。
+- 纯空白名（`'   '`）原样保留 → 该行看起来"空"（`lib/client.js:654` 只判 `length > 0`）。DSH 在上传时 `.trim()`，所以只有手改 settings 文档才可达。
+- 浏览器侧对 `name` **无长度上限**（5000 字原样渲染）。同样只有手改文档可达（DSH 上传时截断到 120）。
+- 仅大小写不同的两个 id **不会**被去重（`seen` 大小写敏感，`lib/client.js:650`）；而 DSH 按文件名 `startsWith` 精确匹配（`lib/index.js:352`），所以大写 id 会渲染成一行但播放时 404 → 记为观察项，正常路径不可达（`randomUUID()` 恒为小写）。
 
 ### 2.2 claim 2 —— 已删除/不存在的 id（PASS）
 
@@ -141,7 +141,7 @@ node dsh-approval-chime/verify-independent/probe-13-r4-browser.mjs   # 预期 ex
 - 「渲染出一行而不是空白」的**充分条件**已被证明：卡片渲染的 `<select>` 的 `value` 一定等于某个已渲染 `<option>` 的 `value`（缺失时 `unshift` 一行"（文件缺失）"，`lib/client.js:1163-1167`）。**引擎级"有匹配 option 就不空白"这一平台行为未实测**（§4-U2）。
 - 播放失败时**只有** `suppressedFailed`（+1）与 `lastError` 变化；`state/unlocked` 不被写成错误态；不抛未处理 rejection（探针内置了"能观测到 vm realm 内未处理 rejection"的仪器对照，见输出 `control: … IS observed by the watcher`）。
 - 失败后内置音色照常（oscillator 重建、`previews` 计数）。
-- 注意一个**设计性不对称**（非缺陷）：裸 id（非 `custom:` 形状）会被 `normalizeTone` 静默回退成 `chime`，**不**产生"文件缺失"行；只有 `custom:<uuid>` 形状才会。宿主的 schema 只接受封闭集合，所以正常路径不可达。
+- 注意一个**设计性不对称**（非缺陷）：裸 id（非 `custom:` 形状）会被 `normalizeTone` 静默回退成 `chime`，**不**产生"文件缺失"行；只有 `custom:<uuid>` 形状才会。DSH 的 schema 只接受封闭集合，所以正常路径不可达。
 
 ### 2.3 claim 3 —— 三种播放失败路径（PASS）
 
@@ -219,8 +219,8 @@ node dsh-approval-chime/verify-independent/probe-13-r4-browser.mjs   # 预期 ex
 ```
 
 - **注入载荷**：`<img src=x onerror="window.__XSS__=1">.wav`。
-- 浏览器半：**全文件没有任何 HTML sink**；载荷在元素树里**只**以字符串子节点（React 文本子节点）出现，从不进任何属性；`<option>` 的 `value` 永远是正则校验过的 `custom:<uuid>`（`^[0-9a-f]{8}-…$`，不可能携带 HTML 字符）。即：实现把"转义"完全交给 React 的文本子节点契约。
-- 宿主半（用**真实路由处理器**驱动，不是抄逻辑）：`displayName` 逐字节原样返回载荷（不做实体编码、不删 `<>"`），只剥路径/控制字符、trim、截 120；文件落盘名是 `<uuid>.wav`。上传后我用同一路由 `DELETE` 清理，`audio/` 目录前后一致（`before=[] after=[]`）。
+- 浏览器侧：**全文件没有任何 HTML sink**；载荷在元素树里**只**以字符串子节点（React 文本子节点）出现，从不进任何属性；`<option>` 的 `value` 永远是正则校验过的 `custom:<uuid>`（`^[0-9a-f]{8}-…$`，不可能携带 HTML 字符）。即：实现把"转义"完全交给 React 的文本子节点契约。
+- DSH 侧（用**真实路由处理器**驱动，不是抄逻辑）：`displayName` 逐字节原样返回载荷（不做实体编码、不删 `<>"`），只剥路径/控制字符、trim、截 120；文件落盘名是 `<uuid>.wav`。上传后我用同一路由 `DELETE` 清理，`audio/` 目录前后一致（`before=[] after=[]`）。
 - **未证实的部分**（§4-U3）：React 一定把字符串子节点渲染成文本节点、且该文本在真实引擎里不执行 —— 本机既无 React 也无浏览器。
 - 用独立 DOM 实现（domino 2.2.0，turndown 的解析器）补充的旁证（probe-13 节 C）：同一个载荷走 `innerHTML` 会生成**真实 `<img src="x" onerror="window.__XSS__=1">` 元素**（说明载荷本身是活标记），走 `textContent` 只生成 `nodeType === 3` 的文本节点、序列化时被转义成 `&lt;img … &gt;`。domino 不是浏览器、不执行脚本，因此这只是"文本路径惰性"的旁证，不能替代引擎级对照。
 
@@ -339,30 +339,30 @@ node dsh-approval-chime/verify-independent/probe-13-r4-browser.mjs   # 预期 ex
 - 最小复现：关掉开关 → `__DSH_APPROVAL_CHIME__.preview()` → `false`，且 `stats().suppressedDisabled === 0`。
 - 影响：卡片"因『启用』关闭而静音 ×N"只在审批路径增长，用户点试听得到的静默没有任何计数解释（UI 上按钮本身也是 disabled，属轻微）。
 
-### F4（low）浏览器半对名册 `name` 无清洗/无上限（依赖宿主上传时的清洗）
+### F4（low）浏览器侧对名册 `name` 无清洗/无上限（依赖 DSH 上传时的清洗）
 
 - 位置：`lib/client.js:643-658`（`readRoster`，`:654` 只判 `typeof name === 'string' && length > 0`）。
 - 实测：`'   '` 原样保留（该行视觉上是空白行）；5000 字名原样渲染。
 - 最小复现：手改 settings 文档 `custom: [{ id: '<uuid>', name: '   ' }]` → 打开插件卡片，音色下拉第一行看起来是空行（值仍可选中，不空白）。
-- 影响：只有手改 settings / 未来宿主放松清洗时才可达（当前宿主上传路径 trim + 截 120）。建议浏览器半也做一次 trim/长度收敛。
+- 影响：只有手改 settings / 未来 DSH 放松清洗时才可达（当前 DSH 上传路径 trim + 截 120）。建议浏览器侧也做一次 trim/长度收敛。
 
-### F5（low）宿主 120 字截断可能切断代理对，存下孤立高代理
+### F5（low）DSH 120 字截断可能切断代理对，存下孤立高代理
 
 - 位置：`lib/index.js:397-401`（`:399` 的 `.slice(0, 120)` 按 UTF-16 code unit 切）。
 - 实测：文件名 `'x'.repeat(119) + '😀' + 'tail.wav'` → 返回名长度 120，末位 code unit = `U+D83D`（孤立高代理），浏览器显示会是 U+FFFD。
 - 最小复现（探针即复现）：`node …/probe-12-r4-injection.mjs`，输出 `MEASURED: the cut split the U+1F600 surrogate pair, leaving a lone high surrogate — U+D83D`。
 - 影响：纯显示层且极窄（≥120 字且截断点落在星平面字符上，需要 macOS/Linux 文件名）。
 
-### F6（low）客户端自己造的兜底名 `audio` 必被宿主拒绝；尾随空格名也被拒
+### F6（low）客户端自己造的兜底名 `audio` 必被 DSH 拒绝；尾随空格名也被拒
 
 - 位置：`lib/client.js:524`（`file.name` 为空时发 `x-chime-name: audio`）与 `lib/index.js:406-413`（扩展名从**原始**名字取，`extname('audio') === ''` → 415）。
 - 实测：`node …/probe-12-r4-injection.mjs` → `the client's own fallback name "audio" has no extension and is refused with 415`；`'padded.wav '`（尾随空格，macOS/Linux 合法文件名）同样 415。
-- 影响：用户看到"导入失败 + 宿主 error 文本"（有反馈，不是静默）；建议客户端兜底名改成 `audio.wav` 或宿主对名字先 trim 再取扩展名。
+- 影响：用户看到"导入失败 + DSH error 文本"（有反馈，不是静默）；建议客户端兜底名改成 `audio.wav` 或 DSH 对名字先 trim 再取扩展名。
 
 ### 观察项（不计为缺陷）
 
 - **O1** 失败采样无负缓存：每次播放都重新发请求（probe-9 实测 2 次尝试 = 2 次请求）。对"文件已删但卡片仍引用"的场景会持续产生一次性请求；功能正确。
-- **O2** 仅大小写不同的 id 不去重（`lib/client.js:650`），且宿主按 `readdir` + `startsWith` 精确匹配（`lib/index.js:352`）→ 大写 id 呈现为"（文件缺失）"；正常路径不可达（`randomUUID()` 恒小写）。
+- **O2** 仅大小写不同的 id 不去重（`lib/client.js:650`），且 DSH 按 `readdir` + `startsWith` 精确匹配（`lib/index.js:352`）→ 大写 id 呈现为"（文件缺失）"；正常路径不可达（`randomUUID()` 恒小写）。
 - **O3** `@supports` 只覆盖 `appearance` 属性值、未覆盖 `::picker()` 伪元素（见 §2.7 末）。未观测到受影响浏览器。
 
 ---
@@ -374,7 +374,7 @@ node dsh-approval-chime/verify-independent/probe-13-r4-browser.mjs   # 预期 ex
 | **U1** | `::picker(select)` 的真实 `box-sizing`，即 `max-height:92px` 到底是"恰好 3 整行"（content-box：内容盒 84px）还是"第 3 行被裁 2px"（border-box：内容盒 82px ≈ 2.93 行） | UA 样式表不出现在二进制明文里（对照串也找不到，方法被证否）；无浏览器可测 | 静态算术 92 = 3×28 + 8 已证；两种盒模型的差 2px 已量化为 84 vs 82 | 在任意支持 `base-select` 的浏览器里打开 picker，读 `getComputedStyle(select,'::picker(select)').boxSizing` 或量 option 命中带（`kit/cdp.mjs` 已备好驱动代码，换到不受命名管道限制的环境即可跑） |
 | **U2** | 引擎里"`<select>` 的 value 匹配到 option 时不会空白显示"这一平台行为 | 同上（无引擎） | 已证**充分条件**：卡片渲染的 value 必然等于某个已渲染 option 的 value（缺文件时会补一行） | 浏览器里 `select.value = 'custom:<未知>'` 对照：有匹配行 → `selectedIndex>=0`；无匹配行 → `value===''`（探针里已写好脚本，见 probe-13 节 D） |
 | **U3** | 真实 React 把字符串子节点渲染为文本节点、且该文本在引擎里**不执行** | 本机无 react/react-dom（三处搜索 + 网络封锁 + GUI 401），也无浏览器 | 已证：全文件零 HTML sink（10 类 API 全 0）；载荷**只**以字符串子节点进树、不进任何属性；`option.value` 是正则校验的 UUID；domino 旁证 `innerHTML` 会生成真实 `<img onerror>`，`textContent` 只生成文本节点并转义 | 在装了 React 的环境里渲染该卡片，断言 `querySelector('img')===null` 且哨兵变量未被置位 |
-| **U4** | 不支持 `base-select` 的浏览器里，宿主原生弹窗是否真的沿用 `option{background-color/color}`（`lib/client.js:966-970` 的注释声称） | 无浏览器；也无法构造"不支持"的引擎 | 已证：该色值规则在 `@supports` **之外**（与注释一致），且降级时唯一生效的就是它 | 在 Chrome<135 / Firefox 上打开弹窗目视或截图取样 |
+| **U4** | 不支持 `base-select` 的浏览器里，DSH 原生弹窗是否真的沿用 `option{background-color/color}`（`lib/client.js:966-970` 的注释声称） | 无浏览器；也无法构造"不支持"的引擎 | 已证：该色值规则在 `@supports` **之外**（与注释一致），且降级时唯一生效的就是它 | 在 Chrome<135 / Firefox 上打开弹窗目视或截图取样 |
 
 ---
 
@@ -388,6 +388,6 @@ node dsh-approval-chime/verify-independent/probe-13-r4-browser.mjs   # 预期 ex
 | 音量一致性 | **硬** | 主增益按"唯一接到 destination 的 gain"识别；5 档 + 6 种非法取值；两条入口路径分别测 |
 | 3 行滚动的**静态**语义 | **硬** | 解析的是真实 `injectStyles()` 产物；行高由样式表自身两个声明推出；同规则/同 `@supports` 块用大括号配平判定，不是字符串包含 |
 | 3 行滚动的**渲染**语义、`<select>` 空白行为、React 转义、原生弹窗取色 | **未证实** | 见 §4；本报告**没有**把它们写成通过 |
-| 宿主显示名清洗 | **硬**（走真实路由处理器） | 通过 `registerAudioRoutes` + 桩 webServer 驱动真实 `handleAudioRoute`，POST/DELETE 往返；上传物已清理，`audio/` 前后一致 |
+| DSH 显示名清洗 | **硬**（走真实路由处理器） | 通过 `registerAudioRoutes` + 桩 webServer 驱动真实 `handleAudioRoute`，POST/DELETE 往返；上传物已清理，`audio/` 前后一致 |
 
-**本轮没有做的事**（避免越界/重复）：宿主路由 `/api/approval-chime/audio` 的完整契约验证由另一位独立验证者负责，我只覆盖了 claim 5 明确点名的"显示名清洗"；需求符合性审查（对照用户原话逐条判定）与两份验证报告的证据强度复核是另一项任务，不在本报告内。
+**本轮没有做的事**（避免越界/重复）：DSH 路由 `/api/approval-chime/audio` 的完整契约验证由另一位独立验证者负责，我只覆盖了 claim 5 明确点名的"显示名清洗"；需求符合性审查（对照用户原话逐条判定）与两份验证报告的证据强度复核是另一项任务，不在本报告内。

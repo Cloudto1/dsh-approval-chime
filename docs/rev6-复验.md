@@ -45,10 +45,10 @@ verify-independent/run-r6.ps1    一键复跑（含 audio/ 目录预检）
 | --- | --- | --- | --- |
 | 1 | 重新锚定被测字节（sha256 + mtime + 晚于最后一次改动 + 复跑前后一致） | **PASS** | §0 表 + §2.7 的 H1/H2 输出 |
 | 2 | N3 ① 大写 uuid 的 roster 条目无法写入（真实 schemastery 拒绝） | **PASS** | `custom:[{id:'<大写>'}]` 被 schema 拒；小写同型通过；非 uuid 仍被拒 |
-| 3 | N3 ② 手改文档里的条目在浏览器半被丢弃（不再渲染） | **PASS** | `roster:[]`、只渲染三个内置；同文档小写孪生仍保留（对照） |
+| 3 | N3 ② 手改文档里的条目在浏览器侧被丢弃（不再渲染） | **PASS** | `roster:[]`、只渲染三个内置；同文档小写孪生仍保留（对照） |
 | 4 | N3 ③ `tone=custom:<大写>` 回落默认音色 | **PASS** | `settings().tone === 'chime'`；真实路由**零请求**、`previews=1/suppressedFailed=0`、`lastTone='chime'` |
 | 5 | N3 ④ 小写正常路径不受影响（导入→渲染→播放） | **PASS** | 真实路由 200 → `previews=1`、`suppressedFailed=0`、`bufferSources=1`；导入顺序/追加仍成立（probe-7 E 组） |
-| 6 | R-RESID 纯空白显示名回落到 id | **PASS** | 4 种空白/控制字节名全部回落为 id，无空标签；宿主上传路径 trim 后非空 |
+| 6 | R-RESID 纯空白显示名回落到 id | **PASS** | 4 种空白/控制字节名全部回落为 id，无空标签；DSH 上传路径 trim 后非空 |
 | 7 | 期望表更新（旧行为断言逐条记录 + 不弱化） | **PASS** | §2.6 表格（probe-7 A/D、probe-15 D2 + 新增 R-RESID 组、等待方式由固定 tick 改条件等待） |
 | 8 | 全量回归（4 套 harness + probe-7..16 + reviewer 两支） | **PASS** | §2.7：56/103/20/70；43/61/38/66/31/47/11/36/105/47；69/0 与 9/0 |
 | 9 | 新缺陷 | **未发现新缺陷**（明确；观察与未证实项见 §3/§4） | §3 |
@@ -60,8 +60,8 @@ verify-independent/run-r6.ps1    一键复跑（含 audio/ 目录预检）
 命令统一为：
 ```powershell
 cd '<workspace>\dsh-approval-chime'
-node verify-independent/probe-15-r5-names-files.mjs      # N3 ①~④ + R-RESID 宿主侧
-node verify-independent/probe-7-r4-roster.mjs            # 浏览器半名册（含 R-RESID、大小写）
+node verify-independent/probe-15-r5-names-files.mjs      # N3 ①~④ + R-RESID DSH 侧
+node verify-independent/probe-7-r4-roster.mjs            # 浏览器侧名册（含 R-RESID、大小写）
 # 全量：powershell -ExecutionPolicy Bypass -File verify-independent/run-r6.ps1
 ```
 
@@ -81,7 +81,7 @@ node verify-independent/probe-7-r4-roster.mjs            # 浏览器半名册（
 
 源码对照：`lib/index.js:288-298` 的 `custom[].id` 现在带小写 uuid pattern（与 `tone` 同型）；`lib/client.js:100` 的 `CUSTOM_ID` 去掉了 `/i`。
 
-### 2.2 N3 ② —— 手改文档的条目在浏览器半被丢弃
+### 2.2 N3 ② —— 手改文档的条目在浏览器侧被丢弃
 
 ```
     · browser half with an uppercase tone value and roster id = {"tone":"chime","roster":[],"rendered":["chime","bell","beep"]}
@@ -150,7 +150,7 @@ node verify-independent/probe-7-r4-roster.mjs            # 浏览器半名册（
 | probe-7 shape D | 仅大小写的两条**都渲染**、断言"大小写敏感去重" | **混合大小写那条被丢弃**（4 行），断言"所有渲染值已小写" | N3 | 原断言描述的是缺陷行为；新断言是可证伪的集合不变量 |
 | probe-15 D2 | "混合大小写 uuid 在 `custom[].id` 里仍被接受" | **被 schema 拒**；另加小写正向、非 uuid 反向、合法 id+任意名正向三条 | N3 ① | 期望方向反转（接受→拒绝）+ 补正向对照 |
 | probe-15 D2 末尾 | "死选项端到端 404"观察 | 端到端**零请求 + 回落播放** + 小写孪生对照 | N3 ②③ | 从"记录缺陷"变为"证明缺陷不可达"，并加对照排除误判 |
-| probe-15（新增组） | 无 | R-RESID 四输入 + 宿主 trim 正向 | R-RESID | 新增覆盖，不涉及弱化 |
+| probe-15（新增组） | 无 | R-RESID 四输入 + DSH trim 正向 | R-RESID | 新增覆盖，不涉及弱化 |
 | probe-15 等待方式 | 正式网络步骤后 `await settle(30/40/60)`（固定事件循环 tick） | **`waitFor(条件, 超时)`** | 探针自检（非产品） | 固定 tick 等真实 loopback I/O 会偶发假阴性（实测同一探针连跑出现 0/1 分歧）；改为条件等待后连跑 3 次均 105/105，**断言内容不变** |
 
 ### 2.7 全量回归汇总（`run-r6.ps1` 原始输出）
@@ -200,7 +200,7 @@ H1 = 5A925E1E…|75188B4C…    H2 = 5A925E1E…|75188B4C…    hashes identical
 | --- | --- | --- |
 | O-1 | `verify/custom-audio.test.mjs:401` 的卫生断言依赖 `audio/` **全局为空** —— 其它套件/探针（包括本人与 reviewer 的）留下的文件会让它报 69/70，看起来像产品回归 | §2.8-1（实测 69/70 → 清空后 70/70）。建议（不在本轮范围、也不允许我改 `verify/**`）：改为"与本次运行开始时的快照比较"而不是断言目录为空 |
 | O-2 | 旧版 `reqcheck.mjs` 仍有 5 条 FAIL | §2.7 表：全部是 rev-4/修复前期望，`reqcheck-rev5.mjs` 才是权威版本（69/0） |
-| O-3 | `displayName` 的 `audio.<ext>` 兜底分支仍不可达（宿主对 `'   .wav'` 存的是 `'.wav'`，非空） | §2.5 输出；与 rev-5 的 O3 同一结论，无影响 |
+| O-3 | `displayName` 的 `audio.<ext>` 兜底分支仍不可达（DSH 对 `'   .wav'` 存的是 `'.wav'`，非空） | §2.5 输出；与 rev-5 的 O3 同一结论，无影响 |
 
 ---
 
@@ -221,10 +221,10 @@ N3 与 R-RESID 本身**不需要浏览器**（它们是校验层/数据层行为
 | 结论 | 强度 | 说明 |
 | --- | --- | --- |
 | N3 ①（schema 拒绝大写 roster id） | **硬** | 用真实 `@deepseek-ai/schemastery` 对完整 namespace 对象做校验，含正向（小写通过）、反向（非 uuid 拒绝）与"合法 id + 任意名接受"的边界 |
-| N3 ②（浏览器半丢弃条目） | **硬** | 直接读渲染出的 `<option>` 序列 + `diagnostics.custom()` 长度，并有"小写孪生保留"的对照 |
+| N3 ②（浏览器侧丢弃条目） | **硬** | 直接读渲染出的 `<option>` 序列 + `diagnostics.custom()` 长度，并有"小写孪生保留"的对照 |
 | N3 ③（tone 回落且零请求） | **硬** | 计数器 + `lastTone` + **真实路由请求数组为空**三重证据；对照 rev-5 的 404 死选项记录 |
 | N3 ④（小写路径无回归） | **硬** | 真实 HTTP 200 + 一次 decode + 一个 buffer source + 无失败计数；导入链路另有 probe-7/16 覆盖 |
-| R-RESID | **硬** | 4 种空白/控制输入逐条断言"标签 = id"，并加"任何标签非空"的集合不变量；宿主侧 trim 正向实测 |
+| R-RESID | **硬** | 4 种空白/控制输入逐条断言"标签 = id"，并加"任何标签非空"的集合不变量；DSH 侧 trim 正向实测 |
 | 全量回归数字 | **硬** | 一条脚本跑完并归档，原始输出可逐行复核；哈希前后一致 |
 | 新旧探针差异解释 | **硬（有据）** | 旧 `reqcheck.mjs` 的 5 条失败逐条给出其硬编码期望与现值的对照 |
 

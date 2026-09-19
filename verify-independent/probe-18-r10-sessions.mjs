@@ -714,9 +714,23 @@ const MUTATIONS = [
   },
 ];
 
+/**
+ * Rewrite ONE occurrence of the anchor in memory. Measured, not assumed (t2 audit):
+ *   0 occurrences  -> dead mutation, it would prove nothing;
+ *   2+ occurrences -> `String.replace` would pick a spot the author did not mean;
+ *   `to === from`  -> a no-op that would look like a caught mutant.
+ * Each of the nine anchors is a SINGLE-LINE fragment (this worktree keeps `lib/*.js` CRLF,
+ * so a bare `\n` inside an anchor can never match).
+ */
 function mutate(source, mutation) {
-  if (!source.includes(mutation.from)) throw new Error(`mutation '${mutation.name}': anchor not found`);
-  return source.replace(mutation.from, mutation.to);
+  const first = source.indexOf(mutation.from);
+  if (first < 0) throw new Error(`mutation '${mutation.name}': anchor not found (0 occurrences)`);
+  if (source.indexOf(mutation.from, first + mutation.from.length) >= 0) {
+    throw new Error(`mutation '${mutation.name}': anchor is not unique (2+ occurrences)`);
+  }
+  const mutated = source.slice(0, first) + mutation.to + source.slice(first + mutation.from.length);
+  if (mutated === source) throw new Error(`mutation '${mutation.name}': substitution was a no-op`);
+  return mutated;
 }
 
 /* --------------------------------------------------------------------- main */
@@ -1570,7 +1584,7 @@ async function main() {
     // (so the badge must render what the bundle reports, whatever that is) and
     // against the expected rev-11 constant (so a stale/forgotten bump still goes
     // red once instead of silently passing).
-    const EXPECTED_REVISION = 'rev-11 · per-session chime (race fix)';
+    const EXPECTED_REVISION = 'rev-20 · the caret turn takes 160 ms';
     check('H6.stats-and-revision', labels.includes('已触发') && labels.includes(bundle.diagnostics.revision) && bundle.diagnostics.revision === EXPECTED_REVISION, `revision=${show(bundle.diagnostics.revision)} rendered=${labels.includes(bundle.diagnostics.revision)} expected=${show(EXPECTED_REVISION)}`);
     check('H7.picker-select-css', bundle.styles().includes('::picker(select)') && bundle.styles().includes('appearance:base-select'), 'the @supports (appearance:base-select) block is still injected');
     check('H8.custom-limit-50', clientSource.includes('var CUSTOM_LIMIT = 50;') && labels.includes('导入音频'), 'CUSTOM_LIMIT = 50 at lib/client.js:193, import control rendered');
@@ -1644,24 +1658,36 @@ if (argument !== undefined) {
     console.log(`\n############ mutation '${mutation.name}' (${mutation.target})`);
     console.log(`############ ${mutation.what}`);
     console.log(`############ declared red set: ${mutation.expect.length === 0 ? '(measurement run)' : mutation.expect.join(', ')}`);
+    const shippedSource = mutation.target === 'client' ? originalClient : originalIndex;
+    const shippedDigest = mutation.target === 'client' ? clientDigest : indexDigest;
+    const anchorOccurrences = shippedSource.split(mutation.from).length - 1;
+    const clientMutated = mutation.target === 'client' ? mutate(originalClient, mutation) : originalClient;
+    const indexMutated = mutation.target === 'host' ? mutate(originalIndex, mutation) : originalIndex;
+    const mutatedSource = mutation.target === 'client' ? clientMutated : indexMutated;
+    const mutatedDigest = sha256(Buffer.from(mutatedSource, 'utf8'));
+    const sourceChanged = mutatedDigest !== shippedDigest;
+    console.log(`############ anchor occurrences in the shipped bytes: ${anchorOccurrences} (must be exactly 1)`);
+    console.log(`############ mutant source sha256 ${mutatedDigest} vs shipped ${shippedDigest} changed=${sourceChanged}`);
     passed = 0;
     failures.length = 0;
-    globalThis.__R10_CLIENT_SOURCE__ = mutation.target === 'client' ? mutate(originalClient, mutation) : originalClient;
-    globalThis.__R10_INDEX_SOURCE__ = mutation.target === 'host' ? mutate(originalIndex, mutation) : originalIndex;
+    globalThis.__R10_CLIENT_SOURCE__ = clientMutated;
+    globalThis.__R10_INDEX_SOURCE__ = indexMutated;
     await main();
     const observed = failures.map((failure) => failure.id);
     const matched = mutation.expect.filter((expected) => observed.some((id) => id === expected || id.startsWith(`${expected}.`)));
     const extra = observed.filter((id) => !mutation.expect.some((expected) => id === expected || id.startsWith(`${expected}.`)));
-    const detected = matched.length === mutation.expect.length && extra.length === 0;
+    const detected = matched.length === mutation.expect.length && extra.length === 0 && sourceChanged && anchorOccurrences === 1;
     console.log(`############ observed red set (${observed.length}): ${observed.join(', ') || '(none)'}`);
     console.log(`############ extra reds beyond the declaration: ${extra.join(', ') || '(none)'}`);
     if (mutation.expect.length === 0) {
       console.log(`############ MEASUREMENT RUN — paste this red set into the mutation declaration`);
       missed += 1;
     } else if (detected) {
-      console.log('############ DETECTED (exactly the declared red set)');
+      console.log('############ DETECTED (exactly the declared red set, and the mutant source provably changed)');
     } else {
       console.log('############ NOT DETECTED as declared');
+      if (!sourceChanged) console.log('############   reason: the mutant source is byte-identical to the shipped source (DEAD MUTATION)');
+      if (anchorOccurrences !== 1) console.log(`############   reason: the anchor occurs ${anchorOccurrences} times in the shipped bytes`);
       missed += 1;
     }
   }

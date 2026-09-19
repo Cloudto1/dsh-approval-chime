@@ -53,10 +53,10 @@ verify-independent/run-r5.ps1           一键复跑
 | 1 | **R5-1** 弹层第 3 行被裁/默认就有滚动条 | **PASS** | `box-sizing:content-box` + `max-height:84px` 同规则；84 = 3×28 **精确**；旧值 92 在 UA border-box 下 = 82px，比 3 行短 **2px**（算术自洽）；`overflow-y:auto` 与圆角仍在同一 `@supports` 块 |
 | 2 | **D1** 超限 413 到不了客户端 | **PASS** | 真实服务器 + 裸 socket：content-length / chunked 快 / chunked 慢(4ms 帧) **三种都收到可读 413 JSON**；3 秒兜底 timer 仅 1 个、`unref`、完成后清除 |
 | 3 | **F1** 同步抛错穿透监听循环 + 按钮卡死 | **PASS** | ①④ 不抛异常 ② 监听器收不到异常、`subscribeErrors` 为空 ③ `suppressedFailed=1`、`lastError` 有值 ④ 按钮回到「导入音频」并显示「导入失败」 |
-| 4 | **D2** uuid 大小写不对称 | **PASS（+1 观察）** | 真实 schemastery：小写 `custom:<uuid>` 过、大写**被拒**；路由 GET/DELETE 大写 → 404「unknown audio id」。观察：浏览器半 `CUSTOM_ID` 仍留 `/i`（§3-N3） |
+| 4 | **D2** uuid 大小写不对称 | **PASS（+1 观察）** | 真实 schemastery：小写 `custom:<uuid>` 过、大写**被拒**；路由 GET/DELETE 大写 → 404「unknown audio id」。观察：浏览器侧 `CUSTOM_ID` 仍留 `/i`（§3-N3） |
 | 5 | **D3** 前缀扫描拿错/删错文件 | **PASS** | `<id>.aaa` + `<id>.mp3` 并存 → GET 返回 `.mp3`（type `audio/mpeg` + `.mp3` 字节）、HEAD 报 `.mp3` 长度、DELETE 删 `.mp3` 后 `.aaa` **仍在**、二次 DELETE `removed:false` |
-| 6 | **D4/F5** 显示名收敛（码点） | **PASS** | 宿主与浏览器半都是 **120 码点**：emoji 边界名 120 码点/121 UTF-16 单元、emoji 完好、**无孤立代理**；控制字节两侧都剥；两侧同输入结果逐字节相同 |
-| 7 | **F6** 扩展名 / 尾随空格 / MIME 兜底 | **PASS** | `ring.mp3`、`ring.mp3 `、` .mp3`、`..mp3`、`x.MP3`、`C:\music\song.MP3`、`ring .mp3` 均 200 并落盘 `<id>.<ext>`；`a.`/`a.aaa`/`note txt`/`ring. mp3`/空白 均 415；浏览器半 `uploadName` 造出的 7 种名字**全部被真实路由接受** |
+| 6 | **D4/F5** 显示名收敛（码点） | **PASS** | DSH 与浏览器侧都是 **120 码点**：emoji 边界名 120 码点/121 UTF-16 单元、emoji 完好、**无孤立代理**；控制字节两侧都剥；两侧同输入结果逐字节相同 |
+| 7 | **F6** 扩展名 / 尾随空格 / MIME 兜底 | **PASS** | `ring.mp3`、`ring.mp3 `、` .mp3`、`..mp3`、`x.MP3`、`C:\music\song.MP3`、`ring .mp3` 均 200 并落盘 `<id>.<ext>`；`a.`/`a.aaa`/`note txt`/`ring. mp3`/空白 均 415；浏览器侧 `uploadName` 造出的 7 种名字**全部被真实路由接受** |
 | 8 | **F2** 文档措辞 | **PASS** | README 已改为"审批触发不建 AudioContext；试听是显式动作、有意解锁"；实测审批路径 `contexts=0`、试听路径 `contexts=1/nodes=0/fetches=0` |
 | 9 | **F3** 禁用时试听不计数 | **PASS** | 预览路径 `suppressedDisabled=1`（内置与导入两条都算） |
 | 10 | **R4-CAP** 第 51 次导入 | **PASS** | 名册满 50 → **上传前拒绝**（0 POST、0 fetch、无节点、无写入）；竞态兜底分支真的 `DELETE` 掉了刚上传的文件；§7-5b 两条并发上传也只留 50 项 |
@@ -205,7 +205,7 @@ verify-independent/run-r5.ps1           一键复跑
 [PASS] dotted name with no real extension → "y..mp3"（仍被路由接受）
 ```
 
-（`uploadName` 的 MIME 兜底是**浏览器半**的职责；宿主对无扩展名依旧 415 —— 这是设计分工，不是缺陷，probe-12 里保留了该 415 断言。）
+（`uploadName` 的 MIME 兜底是**浏览器侧**的职责；DSH 对无扩展名依旧 415 —— 这是设计分工，不是缺陷，probe-12 里保留了该 415 断言。）
 
 ### 2.7 R4-CAP / R4-RACE
 
@@ -248,7 +248,7 @@ verify-independent/run-r5.ps1           一键复跑
 | probe-11 | `max-height:92px` = 3 行 + 8px padding | `box-sizing:content-box` + `max-height:84px` = 恰好 3 行；并复核 92px 在 UA border-box 下短 2px | R5-1 |
 | probe-12 group C | `padded.wav ` → 415 | 200，名字 `padded.wav` | F6 |
 | probe-12 group C | emoji 被切成孤立高代理 U+D83D | 120 码点、emoji 完好、无孤立代理 | F5 |
-| probe-12 group C | 客户端兜底名 `audio` → 415 | 宿主规则不变，但改注为"客户端现在会补扩展名"（见 probe-15） | F6 |
+| probe-12 group C | 客户端兜底名 `audio` → 415 | DSH 规则不变，但改注为"客户端现在会补扩展名"（见 probe-15） | F6 |
 
 > 我**没有**把任何一条"为了让它变绿"的断言改弱：例如 emoji 那条从"期望孤立代理"改成"期望 emoji 完好 + 码点数 + UTF-16 单元数三个量同时断言"；R5-1 那条从"字符串等于 92px"改成"内容盒算术精确等于 3×28 + 显式 box-sizing + 旧值算术自洽 + 4 条同规则/同块断言"。
 
@@ -269,7 +269,7 @@ verify-independent/run-r5.ps1           一键复跑
 - **位置**：`lib/index.js:391-394`（`extra > MAX_AUDIO_BYTES` → `giveUp()` → `req.destroy()`）。
 - **现象（实测）**：总量 7.50 MB / 10.00 MB → **可读 413**；11.25 MB → **ECONNRESET，无 413**。也就是说"多送一个 cap"的宽限用尽后是硬切断，这是代码注释里写明的取舍（"robustness must not become an invitation to stream forever"）。
 - **最小复现**：probe-14 `6` 组 / `5` 组。
-- **影响**：插件自身的导入路径**到不了该分支**（`lib/client.js:1284` 先按 `file.size > 5 MB` 拒绝，根本不上传）。只有第三方客户端（脚本、未来的导入器）在被 reset 时无法区分"文件太大"与"宿主断链"。严重度 low（可达性受限）。
+- **影响**：插件自身的导入路径**到不了该分支**（`lib/client.js:1284` 先按 `file.size > 5 MB` 拒绝，根本不上传）。只有第三方客户端（脚本、未来的导入器）在被 reset 时无法区分"文件太大"与"DSH 断链"。严重度 low（可达性受限）。
 
 ### N3 · low · 名册里的 id 大小写仍是"半边校验"：大写 id 能存能渲染，却永远播不出
 
@@ -307,11 +307,11 @@ verify-independent/run-r5.ps1           一键复跑
 | `refuseOversized` 的兜底/宽限/切断 | **硬** | 定时器生命周期被仪器记录（1 个、unref、清除）；慢速/永久/中断三种发送方 + 宽限边界扫描（7.5/10/11.25 MB）实测 |
 | F1 修复 | **硬** | 四条子要求逐条断言；含"app 侧订阅错误日志为空"这一独立观测面 |
 | D2 / D3 | **硬** | schema 用真实 schemastery 校验；路由用真实服务器 + 真实文件对（`.aaa`+`.mp3`），服务/删除/剩留三者都对得上 |
-| D4/F5 同界 | **硬** | 两侧同一输入逐字节比对；孤立代理用正则双向检测；200k 名在浏览器半实测 |
-| F6 | **硬** | 14 种名字的接受/拒绝表 + 浏览器半真实请求头 → 真实路由接受，端到端闭环 |
+| D4/F5 同界 | **硬** | 两侧同一输入逐字节比对；孤立代理用正则双向检测；200k 名在浏览器侧实测 |
+| F6 | **硬** | 14 种名字的接受/拒绝表 + 浏览器侧真实请求头 → 真实路由接受，端到端闭环 |
 | R4-CAP / R4-RACE | **硬** | 上传前拒绝用"0 请求"证明；竞态分支用 deferred fetch 精确制造；并发两条上传实测只留 50 项 |
 | R5-1 的**算术**部分 | **硬** | 规则解析 + 盒模型算术 + 旧值条件算式，全部可复算 |
 | R5-1 的**渲染**部分、O4 | **未证实** | §4-U1/U2 |
 | N1/N2/N3 | **硬**（现象已复现），等级判断含主观 | 均给了最小复现与可达性边界 |
 
-**方法与边界**：本轮只对 rev-5 的修正与新路径做复核，宿主路由的完整契约仍以 `docs/rev4-独立验证.md` 为准（我只补了 D1 的 socket 级复验与 D2/D3 的对象级验证）；需求符合性以 `docs/rev4-需求符合性审查.md` 为准。未改 `lib/**`、`verify/**`；探针写入 `audio/` 的临时文件全部删除并前后比对目录（`before=[] after=[]`）。
+**方法与边界**：本轮只对 rev-5 的修正与新路径做复核，DSH 路由的完整契约仍以 `docs/rev4-独立验证.md` 为准（我只补了 D1 的 socket 级复验与 D2/D3 的对象级验证）；需求符合性以 `docs/rev4-需求符合性审查.md` 为准。未改 `lib/**`、`verify/**`；探针写入 `audio/` 的临时文件全部删除并前后比对目录（`before=[] after=[]`）。
