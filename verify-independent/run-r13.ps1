@@ -351,7 +351,7 @@ $frozenManifest = @(
   @{ path = 'verify\custom-audio.test.mjs'; bytes = 20263; sha = 'D2DE24C11CA2699738E975476C9659976FC44C201C9F0174567BCE1551F4CD8C' },
   @{ path = 'verify\host-half.test.mjs';   bytes = 29685;  sha = '8AF6315DB2B48A6F089E7DEF96B6C281921209ED0E69799CCFAFD1BC04A3146B' },
   @{ path = 'verify\waterfall.test.mjs';   bytes = 8888;   sha = '010811A5D233C70B058198056BC73B1A9DE1B17560E8A76626F0FE6D4BD6EFC9' },
-  @{ path = 'package.json';                bytes = 732;    sha = 'D78E27106F6876C75A218DDDF0A9F71D3B7C7183FA8579D2941AE2E9D29F1A52' },
+  @{ path = 'package.json';                bytes = 732;    sha = 'DEA1F6EAF86F2DBC8718CAB0B6F08AE6AF44F8210E0374A8B9270535CBD22F45' },
   @{ path = 'cordis.patch.yml';            bytes = 809;    sha = '505A61D6FD1F63A4FB2CE208AE3FC481FFF862D7A212D9530E5D3502683BD3C0' }
 )
 $docPaths = @('README.md', 'CHANGELOG.md')
