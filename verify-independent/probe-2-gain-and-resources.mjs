@@ -236,7 +236,7 @@ for (const [label, pattern] of sourceChecks) {
 const fetchTargets = [...CLIENT_SOURCE.matchAll(/\bfetch\s*\(\s*([A-Za-z_$][\w$]*)/g)].map((match) => match[1]);
 report.deep('every fetch( call passes one of the bundle\'s own route constants', [...new Set(fetchTargets)].sort(), ['AUDIO_ROUTE', 'SESSIONS_ROUTE']);
 report.check(
-  'the fetch( call sites still number the five the rev-20 source has (audio×3, sessions×2)',
+  'the fetch( call sites still number the five the rev-24 source has (audio×3, sessions×2)',
   fetchTargets.length === 5,
   `call site(s) at line(s) ${[...CLIENT_SOURCE.matchAll(/\bfetch\s*\(/g)].map((match) => CLIENT_SOURCE.slice(0, match.index).split('\n').length).join(',')}`,
 );

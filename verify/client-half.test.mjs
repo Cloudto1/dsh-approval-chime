@@ -58,6 +58,29 @@
  *     device, whose system asks for reduced motion. It is a deliberate trade-off and it is
  *     recorded as one next to the constant: this micro-interaction no longer distinguishes
  *     environments, so it must not be quoted as an accessibility policy;
+ *   - rev-21: the SECTION BADGE prints the version id alone ("rev-21"), not the whole stamp
+ *     (user request: "这里只显示版本号就行了"). `diagnostics.revision` keeps the descriptive
+ *     half for the console, `diagnostics.revisionId` is the badge's text, and the badge derives
+ *     it from the same string, so the two cannot drift;
+ *   - rev-22: the BELL RINGS when it is toggled (user request: "这个铃铛也要有动画"). The glyph
+ *     swings about its TOP (a bell hangs from its crown; the caret keeps turning about its
+ *     middle), the @keyframes text is generated from one declared frame table, the animation is
+ *     armed only after the first click so the first paint is silent, and no reduced-motion block
+ *     is added for it — the same standing trade-off rev-20 recorded for the caret;
+ *   - rev-23: that rattle is replaced by a TILT (user request: "再换一个要有高级感"). One lean past
+ *     rest instead of four swings, a scale track, a 9° peak instead of 14°, and an ease-out with a
+ *     long tail instead of a symmetric ease-in-out. The whole difference is the SHAPE of the frame
+ *     table, and the assertions below measure that shape rather than the amplitude: they count the
+ *     crossings of zero and refuse `ease-in-out` by name;
+ *   - rev-24: the tilt is DELETED and the bell does not move at all (user request: "不要晃动，静音时把
+ *     斜杠重左上拉到右下的动画"). The mute is what animates: the slash's stroke is drawn from its
+ *     top-left end to its bottom-right end by animating `stroke-dashoffset` from the diagonal's own
+ *     length to 0, the blue fill dims and returns on the SAME duration, and the stroke is pushed into
+ *     the SVG BEFORE the bell so the silhouette paints over it. Two earlier attempts at hiding the
+ *     slash are recorded in the bundle: a dash offset leaves a round cap on one end (a dot) or drags
+ *     the next repetition in at the other (a stub line), so the resting state is hidden by `opacity`,
+ *     and the assertions below pin that — plus the ABSENCE of every tilt rule, because "the bell does
+ *     not move" is what a later edit breaks by re-adding a keyframe nobody asked for;
  *   - the AudioContext unlocks on the first user gesture and every failure mode
  *     (no WebAudio, suspended context, unresolvable plugin service) degrades
  *     without an uncaught exception or an unhandled rejection.
@@ -405,12 +428,20 @@ const fileInputs = collect(view.tree, (node) => node.type === 'input' && node.pr
 report.equal('the hidden file input is still rendered next to the picker', fileInputs.length, 1);
 report.equal('the remove control is absent while no imported tone is selected', buttons.some((button) => flattenText(button).includes('移除')), false);
 report.equal('exactly one bundle-revision badge', revBadges.length, 1);
-report.equal('the badge names the build the page loaded', flattenText(revBadges[0]), bundle.diagnostics.revision);
-report.equal('the revision stamp is rev-20', String(bundle.diagnostics.revision).startsWith('rev-20'), true);
+report.equal('the badge names the build the page loaded (the version id, not the prose)', flattenText(revBadges[0]), bundle.diagnostics.revisionId);
+report.equal('the revision stamp is rev-24', String(bundle.diagnostics.revision).startsWith('rev-24'), true);
 const statsText = flattenText(view.tree);
+/* rev-21 · the badge prints the ID alone (user request: "这里只显示版本号就行了"). These assertions are
+   the tripwire: the badge must be exactly the version id, it must carry no separator, and the full
+   stamp must be absent from the page. Any of them goes red if the badge is pointed back at
+   `bundleRevision`. `diagnostics.revision` keeps the descriptive half for the console. */
+report.check('the badge is the version id and nothing else (rev-21)', /^rev-\d+$/.test(flattenText(revBadges[0])), flattenText(revBadges[0]));
+report.equal('the badge carries no descriptive half (rev-21)', flattenText(revBadges[0]).includes(' · '), false);
+report.equal('the badge is exactly diagnostics.revisionId (rev-21)', flattenText(revBadges[0]), bundle.diagnostics.revisionId);
+report.equal('the console keeps the descriptive half for diagnosis (rev-21)', String(bundle.diagnostics.revision).indexOf(String(bundle.diagnostics.revisionId) + ' · ') === 0, true);
 report.check('the section shows the trigger counter', statsText.includes('已触发'), statsText.slice(0, 120));
 report.check('the section shows the last-trigger indicator', statsText.includes('上次触发') && statsText.includes('尚未触发'));
-report.check('the section shows the bundle revision stamp', statsText.includes(bundle.diagnostics.revision));
+report.check('the section shows the bundle revision stamp (the version id, rev-21)', statsText.includes(bundle.diagnostics.revisionId) && !statsText.includes(bundle.diagnostics.revision));
 
 const styleText = String(bundle.sandbox.document.created.find((element) => element.id === 'dsh-approval-chime/styles')?.textContent ?? '');
 report.ok(
@@ -1035,6 +1066,274 @@ report.ok(
   'rotate(' + sessionIcon.caretOpenRotateDeg + 'deg) / ' + sessionIcon.caretRotateMs + 'ms ease',
 );
 
+/* rev-24 · the bell's MOTION IS GONE; the MUTE is drawn instead (user requests, in order: "不要晃动，静音时
+ * 把斜杠重左上拉到右下的动画", "关闭静音的时候斜杠从左上到右下动画两个动画时长一样", "斜杠的图层是在铃铛上面
+ * 的", "蓝色的部分也弄个逐渐变暗到消失的动画"). rev-23's tilt is DELETED, not toned down: no transform, no
+ * transform-origin and no animation on the glyph or on the button, in any state.
+ *
+ * That deletion is the load-bearing half of this section. "The bell does not move" is exactly the property a
+ * later edit breaks by re-adding a keyframe nobody asked for, so it is asserted as an ABSENCE — on the
+ * declarations, on the generated sheet, on the rendered tree, and on the SOURCE, where a dead identifier
+ * left in a comment is how the next reader concludes the code still owns a motion that is gone.
+ *
+ * What replaced it: the slash's STROKE is drawn from its top-left end to its bottom-right end by animating
+ * `stroke-dashoffset` from the diagonal's own length to 0, while the blue fill dims and returns on the same
+ * clock. Four things must hold together, and none of them is asserted from a literal the bundle does not
+ * also build from:
+ *
+ *   1. the console surface reports the duration and the drawn length;
+ *   2. the stylesheet ARMS all four halves from exactly those numbers, in the sheet with NO media condition
+ *      — rev-20's standing trade-off, restated for a new animation rather than quietly weakened;
+ *   3. the generated @keyframes text carries the same geometry, and BOTH keyframes animate `opacity`:
+ *      without that track a finished sweep would fall back to the resting rule with the dash parked on its
+ *      end point, i.e. the bottom-right DOT the user reported ("为什么右下角有个点");
+ *   4. the resting AUDIBLE state carries zero visible ink. `stroke-dasharray` with a single value repeats
+ *      every 2·LEN, so no dash offset can be parked clear of BOTH ends of a path whose length IS the dash
+ *      length — LEN lands a round cap on the far end (the dot) and LEN+margin drags the next repetition in
+ *      at the near end ("现在是左上角有个线"). Hence `opacity`, which no dash geometry can defeat.
+ *
+ * PAINT ORDER is asserted too, because SVG has no z-index: the slash is pushed into the paths array BEFORE
+ * the bell and its clapper, so those later siblings paint over the stroke (user report: "斜杠的图层是在铃铛
+ * 上面的").
+ *
+ * The render half runs on its OWN bundle instances, so the clicks below cannot shift the order of the writes
+ * that later sections read back by index.
+ *
+ * WHAT THIS CANNOT PROVE: that a browser's React runtime really replaces the node and replays the animation,
+ * or that the frames LOOK right. This harness's React stub keeps `key` in `props` and re-invokes the
+ * component on every render, so all it can show is that the counter is wired to the glyph's key, that the
+ * animation is armed, and that the numbers agree. Frames need a browser engine, and that probe cannot run
+ * here. */
+report.section('rev-24 · muting draws the slash and never moves the bell');
+const DRAW_EASE_TEXT = 'cubic-bezier(0.22,1,0.36,1)';
+const SWEEP_EASE_TEXT = 'cubic-bezier(0.42,0,0.58,1)';
+const muteInstance = instantiate({ fetch: sessionsFetch({}).fetch });
+await settle();
+const muteComponent = entryFor(muteInstance, 'conversation.session.header.actions').component;
+const muteView = createRenderer(muteInstance.sandbox.react, muteComponent, { sessionId: 'session-mute' });
+muteView.render();
+muteView.runEffects();
+const muteBell = () => byClass(muteView.tree, 'dacBell')[0];
+const muteGlyph = () => muteBell()?.children?.[0];
+const pathKeys = () => (muteGlyph()?.children ?? []).map((node) => String(node?.props?.key ?? ''));
+
+report.equal('the console surface reports the mute gesture duration (rev-24)', sessionIcon.bellMuteMs, 240);
+report.equal('and the drawn length of the diagonal that stroke travels (rev-24)', sessionIcon.bellSlashLen, 15.27);
+
+/* 1 · THE BELL DOES NOT MOVE — asserted as an absence in every place the motion could come back. */
+report.equal('the glyph carries no animation in any state (rev-24)', mergedDecls('.dacBell svg')['animation'], undefined);
+report.equal('no transform on the glyph either (rev-24)', mergedDecls('.dacBell svg')['transform'], undefined);
+report.equal(
+  'and no transform-origin: the pivot rev-23 argued about left with the motion (rev-24)',
+  mergedDecls('.dacBell svg')['transform-origin'],
+  undefined,
+);
+report.equal(
+  'the 28px button that carries the hover pill is motionless too (rev-24)',
+  mergedDecls('.dacBell')['animation'],
+  undefined,
+);
+report.equal(
+  'no armed-glyph rule survives — [data-draw] arms the SLASH, never the glyph (rev-24)',
+  mergedDecls('.dacBell[data-draw="true"] svg')['animation'],
+  undefined,
+);
+report.ok(
+  'the sheet carries no tilt keyframes and no tilt attribute at all (rev-24)',
+  !styleText.includes('@keyframes dacBellTilt') && !styleText.includes('data-tilt'),
+  'keyframes=' + String(styleText.includes('@keyframes dacBellTilt')) + ' data-tilt=' + String(styleText.includes('data-tilt')),
+);
+report.deepEqual(
+  'and no dead name from the two rejected motions survives in the bundle, comments included (rev-24)',
+  ['BELL_TILT', 'data-tilt', 'bellTilt', 'dacBellTilt', 'BELL_SLASH_MS'].filter((name) => source.includes(name)),
+  [],
+);
+
+/* 2 · all four halves are armed from the console surface's own numbers, in the unconditioned sheet. */
+report.equal(
+  'the stylesheet arms the DRAW from those numbers (rev-24)',
+  mergedDecls('.dacBell[data-draw="true"][data-muted="true"] .dacSlash')['animation'],
+  'dacSlashDraw ' + sessionIcon.bellMuteMs + 'ms ' + DRAW_EASE_TEXT,
+);
+report.equal(
+  'and the SWEEP from the SAME duration — "两个动画时长一样" holds by construction (rev-24)',
+  mergedDecls('.dacBell[data-draw="true"][data-muted="false"] .dacSlash')['animation'],
+  'dacSlashSweep ' + sessionIcon.bellMuteMs + 'ms ' + SWEEP_EASE_TEXT + ' forwards',
+);
+report.equal(
+  'the fill dims on the same clock, on the button rather than on the glyph (rev-24)',
+  mergedDecls('.dacBell[data-draw="true"][data-muted="true"]')['animation'],
+  'dacBellDim ' + sessionIcon.bellMuteMs + 'ms ' + SWEEP_EASE_TEXT,
+);
+report.equal(
+  'and comes back on the same clock in the other direction (rev-24)',
+  mergedDecls('.dacBell[data-draw="true"][data-muted="false"]')['animation'],
+  'dacBellGlow ' + sessionIcon.bellMuteMs + 'ms ' + DRAW_EASE_TEXT,
+);
+report.ok(
+  'the slash and the fill SWAP curves between the two directions, so one eases out while the other eases in and out (rev-24)',
+  String(mergedDecls('.dacBell[data-draw="true"][data-muted="true"] .dacSlash')['animation']).includes(DRAW_EASE_TEXT)
+    && String(mergedDecls('.dacBell[data-draw="true"][data-muted="true"]')['animation']).includes(SWEEP_EASE_TEXT)
+    && String(mergedDecls('.dacBell[data-draw="true"][data-muted="false"] .dacSlash')['animation']).includes(SWEEP_EASE_TEXT)
+    && String(mergedDecls('.dacBell[data-draw="true"][data-muted="false"]')['animation']).includes(DRAW_EASE_TEXT),
+  'in=' + String(mergedDecls('.dacBell[data-draw="true"][data-muted="true"] .dacSlash')['animation'])
+    + ' out=' + String(mergedDecls('.dacBell[data-draw="true"][data-muted="false"] .dacSlash')['animation']),
+);
+const curveNumbers = (text) => String(text).match(/cubic-bezier\(([^)]+)\)/)[1].split(',').map(Number);
+/* Rounded to the 2 decimals the curves are written in: 1 − 0.58 is 0.42000000000000004 in binary
+ * floating point, and a curve that is its own mirror must compare EQUAL, not nearly equal. */
+const timeMirror = (curve) => [1 - curve[2], 1 - curve[3], 1 - curve[0], 1 - curve[1]].map((value) => Math.round(value * 100) / 100);
+report.deepEqual(
+  'the sweep curve is its OWN time-reverse, which is the math the note beside it claims (rev-24)',
+  timeMirror(curveNumbers(SWEEP_EASE_TEXT)),
+  curveNumbers(SWEEP_EASE_TEXT),
+);
+report.ok(
+  'and the draw curve deliberately is NOT, so neither direction is a copy of the other (rev-24)',
+  JSON.stringify(timeMirror(curveNumbers(DRAW_EASE_TEXT))) !== JSON.stringify(curveNumbers(DRAW_EASE_TEXT)),
+  'mirror=' + timeMirror(curveNumbers(DRAW_EASE_TEXT)).join(','),
+);
+
+/* 3 · the generated frames carry the same geometry, and neither direction can leave a dot behind. */
+/* Balanced on purpose: `(.*?)\}\}` would stop at the keyframes' own closing brace and hand back a `to{}`
+ * block missing its last character, which reads as a product defect in the failure output. */
+const slashDrawKeyframes = styleText.match(/@keyframes dacSlashDraw\{(from\{[^}]*\}to\{[^}]*\})\}/);
+const slashSweepKeyframes = styleText.match(/@keyframes dacSlashSweep\{(from\{[^}]*\}to\{[^}]*\})\}/);
+report.equal(
+  'the draw and the sweep are both generated into the stylesheet (rev-24)',
+  slashDrawKeyframes !== null && slashSweepKeyframes !== null,
+  true,
+);
+report.equal(
+  'the draw starts fully offset — no ink anywhere — and ends fully drawn and visible (rev-24)',
+  slashDrawKeyframes?.[1],
+  'from{stroke-dashoffset:' + String(sessionIcon.bellSlashLen) + ';opacity:0;}to{stroke-dashoffset:0;opacity:1;}',
+);
+report.equal(
+  'the sweep is its inverse, spelled from the SAME length, and ends invisible (rev-24)',
+  slashSweepKeyframes?.[1],
+  'from{stroke-dashoffset:0;opacity:1;}to{stroke-dashoffset:-' + String(sessionIcon.bellSlashLen) + ';opacity:0;}',
+);
+report.equal(
+  'BOTH frames of BOTH keyframes animate opacity — that track hides the ink, not the dash (rev-24)',
+  (String(slashDrawKeyframes?.[1]) + String(slashSweepKeyframes?.[1])).match(/opacity:/g)?.length,
+  4,
+);
+report.equal(
+  'and the fill has its two generated directions as well (rev-24)',
+  styleText.includes('@keyframes dacBellDim{') && styleText.includes('@keyframes dacBellGlow{'),
+  true,
+);
+report.ok(
+  'neither fill direction holds its end state with forwards — its end state IS the resting rule, and a held fill would out-rank :hover (rev-24)',
+  !String(mergedDecls('.dacBell[data-draw="true"][data-muted="true"]')['animation']).includes('forwards')
+    && !String(mergedDecls('.dacBell[data-draw="true"][data-muted="false"]')['animation']).includes('forwards'),
+  'dim=' + String(mergedDecls('.dacBell[data-draw="true"][data-muted="true"]')['animation'])
+    + ' glow=' + String(mergedDecls('.dacBell[data-draw="true"][data-muted="false"]')['animation']),
+);
+report.ok(
+  'while the SWEEP alone fills forwards, or the finished slash would snap back to fully drawn (rev-24)',
+  String(mergedDecls('.dacBell[data-draw="true"][data-muted="false"] .dacSlash')['animation']).includes('forwards'),
+  String(mergedDecls('.dacBell[data-draw="true"][data-muted="false"] .dacSlash')['animation']),
+);
+
+/* 4 · the resting audible state draws NOTHING, and that lives in the base rule rather than an override. */
+report.equal(
+  'the slash rests fully drawn and invisible — the state a sweep needs an element for (rev-24)',
+  mergedDecls('.dacSlash')['stroke-dashoffset'] + '|' + mergedDecls('.dacSlash')['opacity'],
+  '0|0',
+);
+report.equal(
+  'its dash length IS the diagonal, from the one constant the path and the sheet both read (rev-24)',
+  mergedDecls('.dacSlash')['stroke-dasharray'],
+  String(sessionIcon.bellSlashLen),
+);
+report.equal(
+  'the muted state lifts the opacity, and that is the whole of "drawn" (rev-24)',
+  mergedDecls('.dacBell[data-muted="true"] .dacSlash')['opacity'],
+  '1',
+);
+report.ok(
+  'there is NO audible-state slash rule at all — hiding lives in the base rule (rev-24)',
+  !sheetDefault.includes('.dacBell[data-muted="false"] .dacSlash'),
+  'override=' + String(sheetDefault.includes('.dacBell[data-muted="false"] .dacSlash')),
+);
+
+/* 5 · ONE declaration each, so the four halves and the geometry cannot drift apart. */
+report.equal(
+  'exactly one declaration of the gesture duration (rev-24)',
+  (source.match(/var BELL_MUTE_MS = \d+;/g) ?? []).length,
+  1,
+);
+report.equal(
+  'and exactly one of the drawn length (rev-24)',
+  (source.match(/var BELL_SLASH_LEN = /g) ?? []).length,
+  1,
+);
+
+/* 6 · paint order: the stroke is pushed FIRST, so the bell's silhouette covers it. */
+report.ok(
+  'in the SOURCE the slash is pushed before the bell and the clapper (rev-24)',
+  source.indexOf("key: 'slash'") >= 0 && source.indexOf("key: 'bell'") > source.indexOf("key: 'slash'"),
+  'slash@' + String(source.indexOf("key: 'slash'")) + ' bell@' + String(source.indexOf("key: 'bell'")),
+);
+
+/* 7 · the render: a silent first paint, then one click arms exactly one draw. */
+report.equal(
+  'the first paint is SILENT — the bell has not been clicked, so nothing is armed (rev-24)',
+  muteBell()?.props?.['data-draw'],
+  'false',
+);
+report.equal('and its glyph is keyed on the zero counter (rev-24)', String(muteGlyph()?.props?.key ?? ''), 'glyph0');
+report.deepEqual(
+  'an audible bell that was never toggled carries NO slash node — the two paths the rev-10 icon contract describes (rev-24)',
+  pathKeys(),
+  ['bell', 'clapper'],
+);
+muteBell().props.onClick({});
+await settle();
+muteView.render();
+report.deepEqual(
+  'the click arms the draw AND flips the session to muted (rev-24)',
+  [String(byClass(muteView.tree, 'dacBell')[0]?.props?.['data-draw']), String(byClass(muteView.tree, 'dacBell')[0]?.props?.['data-muted'])],
+  ['true', 'true'],
+);
+report.equal(
+  'the glyph is re-keyed, which is the replacement that replays the animation (rev-24)',
+  String(byClass(muteView.tree, 'dacBell')[0]?.children?.[0]?.props?.key ?? ''),
+  'glyph1',
+);
+report.deepEqual(
+  'and the stroke is now the FIRST of three paths, so the bell paints over it (rev-24)',
+  pathKeys(),
+  ['slash', 'bell', 'clapper'],
+);
+
+/* 8 · a page that LOADS already muted shows the stroke already drawn, with nothing armed. */
+const preMutedInstance = instantiate({ fetch: sessionsFetch({ 'session-pre-muted': { enabled: false } }).fetch });
+await settle();
+const preMutedComponent = entryFor(preMutedInstance, 'conversation.session.header.actions').component;
+const preMutedView = createRenderer(preMutedInstance.sandbox.react, preMutedComponent, { sessionId: 'session-pre-muted' });
+preMutedView.render();
+preMutedView.runEffects();
+await settle();
+preMutedView.render();
+const preMutedBell = () => byClass(preMutedView.tree, 'dacBell')[0];
+report.equal(
+  'a session muted by its own record is drawn struck through (rev-24)',
+  byClass(preMutedView.tree, 'dacSlash').length,
+  1,
+);
+report.deepEqual(
+  'with the animation NOT armed and the glyph on the zero counter, so nothing draws itself at the reader (rev-24)',
+  [
+    String(preMutedBell()?.props?.['data-draw']),
+    String(preMutedBell()?.props?.['data-muted']),
+    String(preMutedBell()?.children?.[0]?.props?.key ?? ''),
+  ],
+  ['false', 'true', 'glyph0'],
+);
+
 /* rev-18 · the reduce-motion diagnostic, re-scoped by rev-20. It used to be the second half of
  * the "an arrow that jumps has TWO causes" story: the turn was too fast to see, or the environment
  * asked for reduced motion and the media block then removed the transition BY DESIGN. rev-20 deleted
@@ -1051,7 +1350,7 @@ report.equal(
   'function',
 );
 report.equal(
-  'and it is NOT part of the geometry snapshot (sessionIcon carries no motion key) (rev-18)',
+  'and it is NOT a member of the geometry snapshot (sessionIcon carries the motion CONSTANTS but never the media-query answer) (rev-18)',
   Object.prototype.hasOwnProperty.call(sessionIcon, 'reduceMotion'),
   false,
 );

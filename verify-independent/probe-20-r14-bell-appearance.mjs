@@ -5,7 +5,16 @@
  * in r19/t2 (the rev-19 duration change 300 ms -> 400 ms) and in r20/t1 (the rev-20 flip
  * back to 160 ms and the DELETION of both reduced-motion media blocks; the mutant
  * `caret-turn-reduced-motion-dropped` became `caret-turn-reduced-motion-restored`, whose anchor is
- * now the caret transition rule it re-inserts the deleted block after).
+ * now the caret transition rule it re-inserts the deleted block after), then in r22/t1 (user request
+ * "这个铃铛也要有动画": group 7 pinned a damped RING), rewritten in r23/t1 (user request "再换一个
+ * 要有高级感": the rattle became ONE lean past rest and a settle) and rewritten AGAIN in r24/t1
+ * (user request "不要晃动，静音时把斜杠重左上拉到右下的动画": the bell body stops moving and the MUTE
+ * is drawn instead). Group 7 now SIMULATES THE CASCADE for the four states the control can be in
+ * (audible/muted x clicked/not-yet-clicked) and pins, in each of them, whether the slash animates,
+ * which curve it uses, and how much ink it leaves -- plus the ABSENCE of every tilt rule, because
+ * "the bell does not move" is the claim a later edit breaks by re-adding one. No mutant was added or
+ * renamed by any of these rounds: every declared red set is unchanged, which is asserted by
+ * `--mutate=all` rather than assumed here.
  *
  * WHY THIS PROBE EXISTS
  *   t3 (the independent review round) ran four UNDECLARED appearance mutations of the session
@@ -109,7 +118,7 @@ const CARET_REDUCED_MOTION_OVERRIDE = "'@media (prefers-reduced-motion:reduce){.
 
 /* rev-18 · the `reduceMotion()` diagnostic. Same rule as above -- every anchor is the shipped
  * source text, so a rename in the bundle cannot leave this probe testing a ghost -- with one
- * addition: THE BUNDLE IS A CRLF FILE (measured: all 3198 of its newlines are CRLF), so the single
+ * addition: THE BUNDLE IS A CRLF FILE (measured: all 3208 of its newlines are CRLF), so the single
  * multi-line anchor here is JOINED WITH CRLF on purpose. Written with bare LF it would match zero
  * occurrences, and `--mutate=all` prints that measured count as "anchor occurrences in the shipped
  * bytes: 0" / DEAD MUTATION rather than passing quietly. */
@@ -150,7 +159,7 @@ const SESSION_ICON_SNAPSHOT_INSERTION = [
   "          reduceMotion: typeof window.matchMedia === 'function' && Boolean(window.matchMedia('(prefers-reduced-motion: reduce)').matches),",
 ].join('\r\n');
 /* The sessionIcon keys rev-17 shipped: the geometry snapshot, and nothing else. */
-const SESSION_ICON_KEYS = ['bellBoxPx', 'bellGapPx', 'bellGlyphPx', 'caretBoxPx', 'caretGlyph', 'caretOpenRotateDeg', 'caretRotateMs', 'onBackground', 'onBackgroundHover', 'onForeground'];
+const SESSION_ICON_KEYS = ['bellBoxPx', 'bellGapPx', 'bellGlyphPx', 'bellMuteMs', 'bellSlashLen', 'caretBoxPx', 'caretGlyph', 'caretOpenRotateDeg', 'caretRotateMs', 'onBackground', 'onBackgroundHover', 'onForeground'];
 
 /* ============================================================ the mutations */
 
@@ -782,7 +791,7 @@ function loadClient(source, options = {}) {
     }
   }
 
-  return { ledger, styleText: style === null ? null : style.textContent, diagnostics, bell, styleCount: style === null ? 0 : 1, sandbox };
+  return { ledger, styleText: style === null ? null : style.textContent, diagnostics, bell, styleCount: style === null ? 0 : 1, sandbox, runtime, sessionEntry };
 }
 
 /**
@@ -1161,6 +1170,247 @@ function inspect(source, options = {}) {
     `sessionIcon keys=${JSON.stringify(Object.keys(sessionIcon).sort())} (expected ${JSON.stringify(SESSION_ICON_KEYS)}), 'reduceMotion' in sessionIcon=${'reduceMotion' in sessionIcon}`,
   );
 
+  /* -----------------------------------------------------------------------------------------
+   * rev-24 (user request: "不要晃动，静音时把斜杠重左上拉到右下的动画") -- the MUTE is DRAWN.
+   *
+   * Group 1 pins what the bell LOOKS like; this group pins what it DOES when it is toggled, and it
+   * reads all of it through this file's OWN model (`collectRules` / `resolveProperty`) against the
+   * stylesheet the bundle really appended -- not through the author suite's reading of it.
+   *
+   * Where the author suite compares one rule at a time, this group SIMULATES THE CASCADE for the
+   * four states the control can be in (audible/muted x clicked/not-yet-clicked) and asks what the
+   * browser would compute in each. That is the difference worth having: "the armed slash animates"
+   * is a claim about the WINNER among rules of different specificity, and a per-rule equality cannot
+   * see a later rule quietly out-ranking it.
+   *
+   * Three things must agree:
+   *   - the DURATION and the DRAWN LENGTH are reported by the console surface;
+   *   - the four armed rules carry exactly those numbers, while every UNARMED state resolves to NO
+   *     animation at all -- a bell that was never clicked must not move, and neither must one that
+   *     merely LOADED muted (that one already shows the stroke, which is why the ink is `opacity`,
+   *     and not a dash offset that would leave a round cap on one end and drag the next repetition
+   *     of the dash in at the other);
+   *   - the @keyframes those rules name are generated from the same length, carry `opacity` in BOTH
+   *     frames, and neither fill direction uses `forwards` (a held fill would out-rank `:hover`).
+   *
+   * THE BELL DOES NOT MOVE is asserted as an ABSENCE on the resolved cascade and on the raw source,
+   * because that is the property a later edit breaks by re-adding a keyframe nobody asked for.
+   *
+   * The reduced-motion assertion is scoped to the BELL on purpose. `caret-turn-reduced-motion-restored`
+   * is declared to redden the CARET check in group 5; a bell-scoped check here must stay GREEN for that
+   * mutant, or the mutant's red set would grow and this file's falsifiability contract would break.
+   * (The whole-sheet "no reduced-motion rule at all" assertion already lives in group 5.)
+   *
+   * The click half is driven through this file's OWN renderer: `renderComponent` re-invokes the
+   * component against the hook state the previous render left behind, which is what makes "click, then
+   * look again" measurable without a browser. What it cannot show is React's reconciliation -- the
+   * replacement that replays the animation is inferred from the changed key, and only a real browser
+   * can watch the frames.
+   * --------------------------------------------------------------------------------------- */
+  group('7 - rev-24: muting draws the slash and the bell never moves');
+  const bellMuteMs = sessionIcon.bellMuteMs;
+  const bellSlashLen = sessionIcon.bellSlashLen;
+  const DRAW_EASE_REV24 = 'cubic-bezier(0.22,1,0.36,1)';
+  const SWEEP_EASE_REV24 = 'cubic-bezier(0.42,0,0.58,1)';
+
+  /* The set of rules that MATCH one element in one state, handed to `resolveProperty` so the winning
+   * declaration is chosen by specificity and written order the way a browser chooses it, instead of by
+   * this file picking the rule it hopes wins. */
+  const slashState = (muted, armed) => {
+    const state = ['.dacSlash'];
+    if (muted) state.push('.dacBell[data-muted="true"] .dacSlash');
+    if (armed) state.push('.dacBell[data-draw="true"][data-muted="' + String(muted) + '"] .dacSlash');
+    return state;
+  };
+  const buttonState = (muted, armed) => {
+    const state = ['.dacBell', '.dacBell[data-muted="' + String(muted) + '"]'];
+    if (armed) state.push('.dacBell[data-draw="true"][data-muted="' + String(muted) + '"]');
+    return state;
+  };
+  const slashResolved = (muted, armed, property) => resolveProperty(rules, slashState(muted, armed), property).value;
+  const buttonResolved = (muted, armed, property) => resolveProperty(rules, buttonState(muted, armed), property).value;
+  const slashMutedArmed = slashResolved(true, true, 'animation');
+  const slashAudibleArmed = slashResolved(false, true, 'animation');
+  const buttonMutedArmed = buttonResolved(true, true, 'animation');
+  const buttonAudibleArmed = buttonResolved(false, true, 'animation');
+  const durationOfRev24 = (value) => {
+    const hit = /(\d+(?:\.\d+)?)ms/.exec(String(value ?? ''));
+    return hit === null ? null : Number(hit[1]);
+  };
+
+  check(
+    'the console surface reports the mute gesture duration and the drawn length of the diagonal',
+    bellMuteMs === 240 && bellSlashLen === 15.27,
+    `sessionIcon.bellMuteMs=${String(bellMuteMs)} sessionIcon.bellSlashLen=${String(bellSlashLen)}`,
+  );
+
+  /* 1 -- THE BELL DOES NOT MOVE: no rule, in any state, gives the glyph or the button a transform or
+   * an animation, and no keyframe or attribute of the two rejected motions survives in the source. */
+  check(
+    'the glyph resolves to NO animation and NO transform at all',
+    isUnrotated(resolveProperty(rules, ['.dacBell svg'], 'transform').value)
+      && resolveProperty(rules, ['.dacBell svg'], 'animation').value === null,
+    `transform=${String(resolveProperty(rules, ['.dacBell svg'], 'transform').value)} animation=${String(resolveProperty(rules, ['.dacBell svg'], 'animation').value)}`,
+  );
+  check(
+    'and the 28px button that carries the hover pill resolves to no transform either',
+    isUnrotated(resolveProperty(rules, ['.dacBell'], 'transform').value),
+    `transform=${String(resolveProperty(rules, ['.dacBell'], 'transform').value)}`,
+  );
+  check(
+    'no tilt keyframes, no tilt attribute and no dead tilt or dash constant survive in the source',
+    ['dacBellTilt', 'data-tilt', 'BELL_TILT', 'bellTilt', 'BELL_SLASH_MS'].every((token) => !SHIPPED.includes(token)),
+    `survivors=${JSON.stringify(['dacBellTilt', 'data-tilt', 'BELL_TILT', 'bellTilt', 'BELL_SLASH_MS'].filter((token) => SHIPPED.includes(token)))}`,
+  );
+
+  /* 2 -- the four armed rules, each carrying the duration and the curve the console surface reports. */
+  check(
+    'going MUTED draws the slash for the reported duration with the draw curve',
+    slashMutedArmed === `dacSlashDraw ${bellMuteMs}ms ${DRAW_EASE_REV24}`,
+    `resolved animation=${String(slashMutedArmed)}`,
+  );
+  check(
+    'going AUDIBLE sweeps it away for the SAME duration, filling forwards so the end state sticks',
+    slashAudibleArmed === `dacSlashSweep ${bellMuteMs}ms ${SWEEP_EASE_REV24} forwards`,
+    `resolved animation=${String(slashAudibleArmed)}`,
+  );
+  check(
+    'the two directions really are one duration -- "两个动画时长一样", measured from the sheet',
+    durationOfRev24(slashMutedArmed) === bellMuteMs && durationOfRev24(slashAudibleArmed) === bellMuteMs,
+    `muted=${String(durationOfRev24(slashMutedArmed))}ms audible=${String(durationOfRev24(slashAudibleArmed))}ms surface=${String(bellMuteMs)}ms`,
+  );
+  check(
+    'the blue fill dims and returns on that same duration, on the BUTTON rather than on the glyph',
+    buttonMutedArmed === `dacBellDim ${bellMuteMs}ms ${SWEEP_EASE_REV24}`
+      && buttonAudibleArmed === `dacBellGlow ${bellMuteMs}ms ${DRAW_EASE_REV24}`,
+    `dim=${String(buttonMutedArmed)} glow=${String(buttonAudibleArmed)}`,
+  );
+  check(
+    'the slash and the fill SWAP curves between the two directions, so one eases out while the other eases in and out',
+    String(slashMutedArmed).includes(DRAW_EASE_REV24) && String(buttonMutedArmed).includes(SWEEP_EASE_REV24)
+      && String(slashAudibleArmed).includes(SWEEP_EASE_REV24) && String(buttonAudibleArmed).includes(DRAW_EASE_REV24),
+    `muted: slash=${String(slashMutedArmed)} fill=${String(buttonMutedArmed)} / audible: slash=${String(slashAudibleArmed)} fill=${String(buttonAudibleArmed)}`,
+  );
+  check(
+    'neither fill direction holds its end state with forwards, while the sweep does',
+    !String(buttonMutedArmed).includes('forwards') && !String(buttonAudibleArmed).includes('forwards')
+      && String(slashAudibleArmed).includes('forwards'),
+    `dim=${String(buttonMutedArmed)} glow=${String(buttonAudibleArmed)} sweep=${String(slashAudibleArmed)}`,
+  );
+
+  /* 3 -- NOTHING MOVES BEFORE THE FIRST CLICK, in either direction. */
+  check(
+    'an audible bell that was never clicked resolves to NO animation on the slash or on the button',
+    slashResolved(false, false, 'animation') === null && buttonResolved(false, false, 'animation') === null,
+    `slash=${String(slashResolved(false, false, 'animation'))} button=${String(buttonResolved(false, false, 'animation'))}`,
+  );
+  check(
+    'a bell that LOADED muted shows the stroke with no animation either',
+    slashResolved(true, false, 'animation') === null && slashResolved(true, false, 'opacity') === '1',
+    `animation=${String(slashResolved(true, false, 'animation'))} opacity=${String(slashResolved(true, false, 'opacity'))}`,
+  );
+  /* THE ZERO-INK CLAIM, and why it is `opacity` rather than a dash offset: a single-value
+   * `stroke-dasharray` repeats every 2*LEN, so LEN lands a round cap on the far end (the DOT the user
+   * reported) and LEN+margin drags the next repetition in at the near end (the STUB LINE they reported
+   * next). Both were seen; hiding by opacity cannot be defeated by any dash geometry. */
+  check(
+    'while AUDIBLE the slash resolves to zero opacity with the dash still fully drawn',
+    slashResolved(false, true, 'opacity') === '0' && slashResolved(false, true, 'stroke-dashoffset') === '0'
+      && slashResolved(false, true, 'stroke-dasharray') === String(bellSlashLen),
+    `opacity=${String(slashResolved(false, true, 'opacity'))} dashoffset=${String(slashResolved(false, true, 'stroke-dashoffset'))} dasharray=${String(slashResolved(false, true, 'stroke-dasharray'))}`,
+  );
+  check(
+    'and no audible-state rule overrides it -- hiding lives in the base rule',
+    !styleText.includes('.dacBell[data-muted="false"] .dacSlash'),
+    `override present=${String(styleText.includes('.dacBell[data-muted="false"] .dacSlash'))}`,
+  );
+
+  /* 4 -- the generated keyframes, read out of the sheet this probe parsed itself. */
+  const slashSteps = (name) => rules.filter((rule) => rule.conditions.some((condition) => condition.startsWith('@keyframes ' + name)));
+  /* A step's own name is its PRELUDE, not a condition: `collectRules` records the enclosing at-rules
+   * in `conditions` and the step itself in `prelude` (read off the parser, not assumed). */
+  const stepOf = (steps, at) => steps.find((rule) => rule.prelude === at);
+  const drawSteps = slashSteps('dacSlashDraw');
+  const sweepSteps = slashSteps('dacSlashSweep');
+  const drawFrom = stepOf(drawSteps, 'from');
+  const drawTo = stepOf(drawSteps, 'to');
+  const sweepFrom = stepOf(sweepSteps, 'from');
+  const sweepTo = stepOf(sweepSteps, 'to');
+  check(
+    'the draw runs from the full dash length to zero, and the sweep from zero to the negative length',
+    drawFrom?.declarations.get('stroke-dashoffset') === String(bellSlashLen)
+      && drawTo?.declarations.get('stroke-dashoffset') === '0'
+      && sweepFrom?.declarations.get('stroke-dashoffset') === '0'
+      && sweepTo?.declarations.get('stroke-dashoffset') === '-' + String(bellSlashLen),
+    `draw ${String(drawFrom?.declarations.get('stroke-dashoffset'))}->${String(drawTo?.declarations.get('stroke-dashoffset'))} sweep ${String(sweepFrom?.declarations.get('stroke-dashoffset'))}->${String(sweepTo?.declarations.get('stroke-dashoffset'))} length=${String(bellSlashLen)}`,
+  );
+  check(
+    'and all four of those steps animate opacity, which is what leaves no dot and no stub behind',
+    [drawFrom, drawTo, sweepFrom, sweepTo].every((rule) => rule !== undefined && rule.declarations.has('opacity')),
+    `opacity tracks=${JSON.stringify([drawFrom, drawTo, sweepFrom, sweepTo].map((rule) => String(rule?.declarations.get('opacity'))))}`,
+  );
+  check(
+    'the fill has its two generated directions as well',
+    slashSteps('dacBellDim').length > 0 && slashSteps('dacBellGlow').length > 0,
+    `dim steps=${slashSteps('dacBellDim').length} glow steps=${slashSteps('dacBellGlow').length}`,
+  );
+
+  /* 5 -- the reduced-motion stance, scoped to the bell on purpose (see the note above). */
+  const bellRulesUnderReducedMotionRev24 = reduceMotionRules.filter((rule) => rule.selectors.some((selector) => selector.includes('.dacBell')));
+  check(
+    'no reduced-motion rule names the bell, so the draw plays in every environment',
+    bellRulesUnderReducedMotionRev24.length === 0,
+    `reduced-motion rules naming .dacBell=${bellRulesUnderReducedMotionRev24.length} (all reduced-motion rules in the sheet=${reduceMotionRules.length})`,
+  );
+
+  /* 6 -- the rendered control: silently painted first, armed by the click, and the stroke pushed BEFORE
+   * the bell so the silhouette paints over it (SVG has no z-index, and the user reported the slash
+   * sitting on top of the bell). */
+  const bellButtonOfRev24 = (tree) => {
+    let found = null;
+    walk(tree, (node) => {
+      if (found === null && node.props && node.props.className === 'dacBell') found = node;
+    });
+    return found;
+  };
+  const glyphOfRev24 = (tree) => {
+    const button = bellButtonOfRev24(tree);
+    return button === null ? null : (button.children ?? [])[0] ?? null;
+  };
+  const glyphKeyOfRev24 = (tree) => String(glyphOfRev24(tree)?.props?.key ?? '');
+  const pathKeysOfRev24 = (tree) => ((glyphOfRev24(tree)?.children) ?? []).map((node) => String(node?.props?.key ?? ''));
+  check(
+    'the rendered bell starts UN-ARMED: the draw is armed by a click, never by the load',
+    bellButtonOfRev24(bell) !== null && bellButtonOfRev24(bell).props['data-draw'] === 'false' && glyphKeyOfRev24(bell) === 'glyph0',
+    bellButtonOfRev24(bell) === null ? 'no .dacBell rendered' : `data-draw=${JSON.stringify(bellButtonOfRev24(bell).props['data-draw'])} glyph key=${JSON.stringify(glyphKeyOfRev24(bell))}`,
+  );
+  check(
+    'and it carries no slash node at all before it is ever clicked -- still the two paths of rev-10',
+    JSON.stringify(pathKeysOfRev24(bell)) === JSON.stringify(['bell', 'clapper']),
+    `path keys=${JSON.stringify(pathKeysOfRev24(bell))}`,
+  );
+  const bellButtonRev24 = bellButtonOfRev24(bell);
+  if (bellButtonRev24 === null || typeof bellButtonRev24.props.onClick !== 'function') {
+    check(
+      'clicking the bell arms the draw, re-keys the glyph and puts the stroke BEHIND the bell',
+      false,
+      `no clickable .dacBell rendered (button=${bellButtonRev24 === null ? 'null' : typeof bellButtonRev24.props.onClick})`,
+    );
+  } else {
+    bellButtonRev24.props.onClick({});
+    const afterClick = renderComponent(loaded.runtime, loaded.sessionEntry.component, { sessionId: 'session-a' });
+    const clickedButton = bellButtonOfRev24(afterClick.tree);
+    check(
+      'clicking the bell arms the draw, re-keys the glyph and puts the stroke BEHIND the bell',
+      clickedButton !== null && clickedButton.props['data-draw'] === 'true' && glyphKeyOfRev24(afterClick.tree) === 'glyph1'
+        && JSON.stringify(pathKeysOfRev24(afterClick.tree)) === JSON.stringify(['slash', 'bell', 'clapper']),
+      clickedButton === null
+        ? `nothing rendered after the click (${afterClick.errors.length} effect error(s))`
+        : `after one click: data-draw=${JSON.stringify(clickedButton.props['data-draw'])} glyph key=${JSON.stringify(glyphKeyOfRev24(afterClick.tree))} path keys=${JSON.stringify(pathKeysOfRev24(afterClick.tree))}`,
+    );
+  }
+
+
   const failed = results.filter((entry) => !entry.ok);
   console.log(`\n### ${options.title ?? 'probe-20-r14-bell-appearance.mjs'}: ${results.length - failed.length}/${results.length} independent checks passed`);
   for (const entry of failed) console.log(`    FAILED: ${entry.name}${entry.detail.length > 0 ? ` -- ${entry.detail}` : ''}`);
@@ -1181,7 +1431,7 @@ const mutateArg = process.argv.find((value) => value.startsWith('--mutate='));
 const shippedDigest = sha256(SHIPPED);
 
 if (mutateArg === undefined) {
-  console.log('dsh-approval-chime · independent probe 20 · rev-13/rev-14/rev-16/rev-17/rev-18/rev-19/rev-20 session-bell appearance + reduceMotion');
+  console.log('dsh-approval-chime · independent probe 20 · rev-13/rev-14/rev-16/rev-17/rev-18/rev-19/rev-20/rev-21/rev-22/rev-23/rev-24 session-bell appearance + reduceMotion');
   console.log(`lib/client.js ${Buffer.byteLength(SHIPPED, 'utf8')} B sha256 ${shippedDigest}`);
   const failed = inspect(SHIPPED, { verbose: true });
   process.exit(failed.length === 0 ? 0 : 1);

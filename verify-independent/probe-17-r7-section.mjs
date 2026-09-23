@@ -737,11 +737,11 @@ report.group('0. the bytes under test are the shipped ones');
 report.note('file', CLIENT_PATH);
 report.note('bytes', CLIENT_BYTES);
 report.note('sha256', CLIENT_SHA256);
-report.same('lib/client.js byte count is what rev-20 claims', CLIENT_BYTES, 158549);
+report.same('lib/client.js byte count is what rev-24 claims', CLIENT_BYTES, 179451);
 report.same(
-  'lib/client.js sha256 is what rev-20 claims',
+  'lib/client.js sha256 is what rev-24 claims',
   CLIENT_SHA256,
-  '4B6C8B91F0C294A0E2C561934C8ED627C7D3F937CFF33904A8FACA651A5949F3',
+  '0BDAC98C5F9AB06F687A9856238EA7C7302A5E7F6CDEDD9CBBA6CDEBCEA49958',
 );
 report.same('lib/client.js has no top-level import/export (it is a classic script)', /^import |^export /m.test(CLIENT_SOURCE), false);
 
@@ -897,8 +897,9 @@ report.same('the page heading is an <h2> carrying 通知提醒', textOf(byType(t
 report.same('exactly one <h2> on the page', byType(tree, 'h2').length, 1);
 report.check('the intro line is present', text.includes('DSH 向你申请权限时响一次'), text.slice(0, 90));
 report.check('the section carries the plugin data attribute for a browser probe', byType(tree, 'section')[0]?.props?.['data-plugin'] === 'dsh-approval-chime');
-report.same('the bundleRevision badge shows the rev-20 stamp', textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev')), diagnostics.revision);
-report.check('the revision stamp is the rev-20 one', /rev-20/.test(diagnostics.revision), diagnostics.revision);
+report.same('the bundleRevision badge shows the version id alone (rev-21)', textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev')), diagnostics.revisionId);
+report.check('the revision stamp is the rev-24 one', /rev-24/.test(diagnostics.revision), diagnostics.revision);
+report.check('the badge carries the version id and no prose (rev-21)', /^rev-\d+$/.test(String(textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev')))), String(textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev'))));
 
 const checkbox = inputsOf(tree, 'checkbox')[0];
 report.same('exactly one enable checkbox', inputsOf(tree, 'checkbox').length, 1);

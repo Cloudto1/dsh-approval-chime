@@ -38,8 +38,8 @@ dsh plugin --profile web add <上面任一条 spec>
 - **三种内置音色** —— 风铃 `chime` / 铃铛 `bell` / 蜂鸣 `beep`，全部为 WebAudio 现场合成，不加载任何音频文件。
 - **导入本地音频当音色** —— 分区页「音色」右侧的「导入音频」；上限 5 MB、最多 50 个。
   音频字节落在插件目录，名册（顺序、显示名）随设置文档走。
-- **按会话独立**（rev-10）—— 每个会话标题行有一个小铃铛：点一下只静音**这个会话**；
-  铃铛旁的箭头可给该会话单独指定音色与音量（默认跟随全局）。
+- **按会话独立**（rev-10）—— 每个会话标题行有一个小铃铛：点一下只静音**这个会话**（静音时那道斜杠
+  从左到右画出来，取消时反向扫走，240 ms）；铃铛旁的箭头可给该会话单独指定音色与音量（默认跟随全局）。
   多个会话同时待审批时**各响各的**（同一批按快照顺序逐个响、相邻 180 ms），不再合并成一声。
 - **试听与恢复默认** —— 恢复默认只重置 `enabled / volume / tone`，**不动** `custom`
   （导入的文件是素材库，不是一项偏好）。
@@ -69,9 +69,10 @@ dsh plugin --profile web add <上面任一条 spec>
   该模式下分区页渲染为空（导航行仍在）。
 - **「试听」会先解锁音频上下文**：这是刻意的——让你第一次点击就解除浏览器的自动播放限制。它同样遵循
   `enabled` / `volume`，静音时不发声。
-- **本插件不尊重系统「减少动效」偏好**（rev-20 起的**有意取舍**）：会话铃铛旁箭头的转动与设置页开关的
-  过渡，在任何环境下都是同一段 160 ms，没有例外。顶层诊断 `reduceMotion()` 保留，但它只报告
-  "本页是否命中 `(prefers-reduced-motion: reduce)`"，**不改变任何行为**。
+- **本插件不尊重系统「减少动效」偏好**（rev-20 起的**有意取舍**）：会话铃铛的静音斜杠（240 ms）、
+  铃铛旁箭头的转动（160 ms）与设置页开关的过渡，在任何环境下都按各自的常量播放，没有例外。
+  顶层诊断 `reduceMotion()` 保留，但它只报告"本页是否命中 `(prefers-reduced-motion: reduce)`"，
+  **不改变任何行为**。
 - 分区页在非 loopback 时为空、`custom:` 音色在文件缺失时的表现等更细的边界，见下方手册的 §9。
 
 ---
@@ -82,12 +83,12 @@ dsh plugin --profile web add <上面任一条 spec>
 
 ```sh
 node verify/host-half.test.mjs      # 124 项
-node verify/client-half.test.mjs    # 400 项
+node verify/client-half.test.mjs    # 442 项
 node verify/waterfall.test.mjs      #  22 项
 node verify/custom-audio.test.mjs   #  75 项
 ```
 
-当前为 **621 项断言全绿（124 + 400 + 22 + 75）**，各 exit 0。
+当前为 **663 项断言全绿（124 + 442 + 22 + 75）**，各 exit 0。
 `verify/waterfall.test.mjs` 用**静态 + 运行时 + 真 cordis 对照实验**三重证明「审批瀑布零注册」。
 
 `verify-independent/` 是独立验证层（另一套探针与变异表，与上面四套不共享代码），
@@ -104,7 +105,7 @@ node verify/custom-audio.test.mjs   #  75 项
 | [`docs/挂载与验收.md`](docs/挂载与验收.md) | 挂载 / 验收操作手册 |
 | [`docs/验证报告.md`](docs/验证报告.md) | 历次验证报告 |
 | [`docs/变异覆盖与残留红.md`](docs/变异覆盖与残留红.md) | 变异测试覆盖表与残留红项 |
-| [`CHANGELOG.md`](CHANGELOG.md) | 逐版本的变更记录（rev-1 → rev-20，含锚定字节哈希与每次的验证结论） |
+| [`CHANGELOG.md`](CHANGELOG.md) | 逐版本的变更记录（rev-1 → rev-24，含锚定字节哈希与每次的验证结论） |
 
 ---
 

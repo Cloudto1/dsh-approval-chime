@@ -264,7 +264,7 @@ const harness = createClientCtx({
 contract.apply(harness.ctx);
 const diagnostics = sandbox.context.window.__DSH_APPROVAL_CHIME__;
 report.ok('the diagnostics surface is installed', diagnostics !== undefined && diagnostics !== null);
-report.ok('the revision names this build', String(diagnostics.revision).includes('rev-20'), String(diagnostics.revision));
+report.ok('the revision names this build', String(diagnostics.revision).includes('rev-24'), String(diagnostics.revision));
 report.deepEqual(
   'option order is imports (in order, deduplicated) then built-ins',
   diagnostics.toneOptions(),

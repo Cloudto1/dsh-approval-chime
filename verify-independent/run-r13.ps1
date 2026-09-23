@@ -1,13 +1,13 @@
-# Independent rev-20 full regression run (r20/t1, the caret duration moved 400 ms -> 160 ms, BOTH reduced-motion media blocks deleted and every live fingerprint re-anchored; the r18/t1, r18b/t5, r18c/t7 and r19/t2 logs are preserved).
+# Independent rev-24 full regression run (r24/t1, the tilt is DELETED and the bell stops moving; the MUTE is drawn instead and every live fingerprint re-anchored; the r18/t1, r18b/t5, r18c/t7, r19/t2, r20/t1, r21/t1 and r23/t1 logs are preserved).
 #
 # Derived from run-r12.ps1 (which was derived from run-r11.ps1 -> run-r10.ps1 -> run-r7.ps1) and
 # re-anchored by r15/t6. Same structure, same exception discipline, same UTF-8-without-BOM
-# logging. Every log this script writes carries the `r20-` prefix; the r4 ... r12b archives, the
+# logging. Every log this script writes carries the `r24-` prefix; the r4 ... r12b archives, the
 # r13-*/r13b-*/r13c-*/r13-final-*/r13w-* evidence of the r12/r13 rounds, the r15-*/r16-*/r17-*
-# evidence of the r15/r16/r17/r18/r18b/r18c/r19 rounds under verify-independent/_raw/ are NEVER overwritten
+# evidence of the r15/r16/r17/r18/r18b/r18c/r19/r20 rounds under verify-independent/_raw/ are NEVER overwritten
 # (run-r12.ps1 is left exactly as it was). The r16/t1 round learned why this note exists: a
 # forgotten prefix row made the first r16/t1 run overwrite the rev-15 logs; see
-# _raw/r16-t1-mislabelled-r15-logs/README.md. r17/t1, r18/t1, r18b/t5, r18c/t7, r19/t2 AND r20/t1 moved every prefix row in the
+# _raw/r16-t1-mislabelled-r15-logs/README.md. r17/t1, r18/t1, r18b/t5, r18c/t7, r19/t2, r20/t1 AND r21/t1 moved every prefix row in the
 # SAME batch as the rest of the re-anchor.
 #
 # t2 (the mutation-soundness audit, same round) added section 2d and the reviewer registration:
@@ -41,7 +41,7 @@
 #   and the shipped probe runs in the regression set (section 2). Nothing existing was edited or
 #   relaxed; the runner's log prefix moved to `r13w-` so the r12/r13 logs and t5's r13-final-*
 #   archive stay untouched (the prefix moved round after round: r15-, r16-, r17-, r18-, r18b-, r18c- and
-#   the r19/t2 re-anchor; this r20/t1 re-anchor writes `r20-`, and the rule is stated at the top of this
+#   the r19/t2 re-anchor; this r20/t1 re-anchor wrote `r20-`, and the rule is stated at the top of this
 #   header).
 #   Evidence for this round: _raw/r13w-*, plus the report
 #   verify-independent/r13w-bell-appearance-coverage.md.
@@ -64,8 +64,71 @@
 #   - lib/index.js (the HOST half) is UNCHANGED since rev-11 and must stay byte-identical:
 #     46638 B / 03778391E15163487BC0F26082A73CBA15FAAF44CDC2CF93B0C185D75FB0B938.
 #
-# WHY THIS RUN EXISTS AT rev-20 -- the caret turn is 160 ms again and BOTH reduced-motion media
-# blocks are deleted. This is a reversal, and the finding that forced it is the point of the round:
+# WHY THIS RUN EXISTS AT rev-24 -- THE BELL DOES NOT MOVE; THE MUTE IS DRAWN. User request:
+# "不要晃动，静音时把斜杠重左上拉到右下的动画", extended over four reader rounds ("关闭静音的时候斜杠从左上
+# 到右下动画两个动画时长一样" / "斜杠的图层是在铃铛上面的" / "蓝色的部分也弄个逐渐变暗到消失的动画", plus the
+# duration tuning recorded at the constant). rev-23's tilt is DELETED, not toned down: the glyph and the
+# 28px button carry no transform and no animation in ANY state. What moves is the slash's STROKE -- drawn
+# from its top-left end to its bottom-right end by animating `stroke-dashoffset` from the diagonal's own
+# length (15.27) to 0 -- and the blue fill, on the SAME 240 ms clock in both directions.
+#   - the console surface reports `sessionIcon.bellMuteMs` (240) and `sessionIcon.bellSlashLen` (15.27);
+#     the attribute that arms the animation is `data-draw`, the glyph key is unchanged ("glyph<N>"), and
+#     the arming rule is still "not before the first click", so the first paint is silent.
+#   - THE RESTING AUDIBLE STATE DRAWS NOTHING, and it does so with `opacity` rather than a dash offset.
+#     That is not a preference: a single-value `stroke-dasharray` repeats every 2*LEN, so LEN parks a
+#     round cap on the far end (the DOT the user reported) and LEN+margin drags the next repetition in at
+#     the near end (the STUB LINE they reported next). Both were shipped, and both were seen.
+#   - PAINT ORDER IS THE PATHS ARRAY. SVG has no z-index, so the slash is pushed BEFORE the bell and its
+#     clapper; the user had reported the stroke sitting ON TOP of the bell.
+#   - NO reduced-motion override was added for the draw either, and `prefers-reduced-motion` still appears
+#     ZERO times in the stylesheet -- measured by probe-20, not assumed.
+#   - THE DURATION IS A READER TUNING, NOT A MEASUREMENT: 240 -> 420 -> 420+the fill -> 300 -> (360 for
+#     one round, set from a misread typo) -> 240. The whole history sits next to the constant, including
+#     the 360 that was never really on trial. WHETHER 240 READS RIGHT IS NOT SOMETHING THIS RUN CAN
+#     PROVE -- only the user, looking at the page, can. probe-13 (the browser probe) still cannot run
+#     here, so the FRAMES stay unobserved by anything in this repo.
+# WHY THE r22 ROUND EXISTED (history, kept verbatim) -- the BELL RINGS when it is toggled. User request: "这个铃铛也要有动画"
+# (the bell beside the caret must animate too, the way the arrow already does). The glyph swings about
+# its TOP edge in a damped ring; the @keyframes text is generated from ONE declared frame table, so the
+# stylesheet and the console surface cannot disagree about the peak angle; the animation is armed only
+# after the first click (`data-ring="true"`), so the first paint is silent; and the node that moves is
+# the <svg> glyph, never the 28px button that carries the hover pill. Geometry, paint, the audio path
+# and the host half are UNTOUCHED.
+#   - BELL_RING_MS is 420 and BELL_RING_DEG is 14, both on the console surface as
+#     `sessionIcon.bellRingMs` / `sessionIcon.bellRingDeg`. The ring is deliberately LONGER than the
+#     caret's 160 ms and is a separate knob: the caret reports one discrete state with a quarter turn,
+#     the bell imitates a decaying oscillation, and neither number is derived from the other.
+#   - NO reduced-motion override is added for the ring either. That is r20/t1's standing decision for
+#     the caret (one rule, every environment) applied to the new motion, not a new policy: this
+#     micro-interaction still does not distinguish environments, and the trade-off is recorded next to
+#     the constant rather than dressed up. `prefers-reduced-motion` still appears ZERO times in the
+#     stylesheet, which probe-20 measures rather than assumes.
+#   - WHETHER THE RING IS WHAT THE USER WANTED -- and whether it reads as a ring rather than a twitch on
+#     their hardware -- IS NOT SOMETHING THIS RUN CAN PROVE. Only the user, looking at the page, can.
+#     This run pins the duration, the peak angle, the generated keyframes, the pivot, the untouched
+#     button and the arming hook; nothing about perception. probe-13 (the browser probe) still cannot run
+#     here -- there is no browser engine in this environment -- so the FRAMES stay unobserved by anything
+#     in this repo.
+# WHY THE r21 ROUND EXISTED (history, kept verbatim) -- the SECTION BADGE prints the version ID ALONE. User request:
+# "这里只显示版本号就行了" (the badge used to render the whole stamp, e.g.
+# 'rev-20 · the caret turn takes 160 ms'). The badge now renders `snapshot.bundleRevisionId`, which
+# is DERIVED from `REVISION` when the bundle is built, so the id and the descriptive half cannot
+# drift apart; the descriptive half stays on the console surface (`diagnostics.revision`), where
+# there is room for it, and `diagnostics.revisionId` is the badge's text. Behaviour, stylesheet,
+# geometry, the audio path and the host half are UNTOUCHED -- this is a rendering change and it is
+# the whole change.
+#   - the round also found that the tree had already moved under the r20 evidence: commit b0ad1eb
+#     ("rev-12..rev-20 refinements, DSH terminology, user-facing README", 2026-09-20 00:38) landed
+#     AFTER the r20 canonical run (23:06) and rewrote 556 strings across 25 files, two of them in
+#     the strings this bundle shows. The product bytes therefore went 158549 B / 4B6C8B91... (the
+#     bytes every r20 fingerprint pinned) to 158546 B / 5DE1F30C... BEFORE this round started, so
+#     section 0 of this script was RED on the committed tree until this re-anchor. The deltas below
+#     name that hop explicitly instead of presenting the r20 numbers as current.
+#   - WHETHER AN ID-ONLY BADGE IS WHAT THE USER WANTED IS NOT SOMETHING THIS RUN CAN PROVE. Only
+#     the user, looking at the page, can. This run pins the badge's text, the absence of the prose
+#     half on the page and the console surface that keeps both -- nothing about taste.
+# WHY THE r20 ROUND EXISTED (history, kept verbatim) -- the caret turn is 160 ms again and BOTH
+# reduced-motion media blocks are deleted. This is a reversal, and the finding that forced it is the point of the round:
 # the caret's own override removed the transition ENTIRELY on the reporting user's device (their
 # system asks for reduced motion), so rev-18's 300 ms and rev-19's 400 ms were never played there
 # at all -- the duration was never the cause. User request: "动画效果打开有效果，不过我要的是开不开都是
@@ -108,18 +171,54 @@
 #     157296 B / 1C75C8B5... (r19/t1: SIX equal-length in-line substitutions) ->
 #     158549 B / 4B6C8B91... (r20/t1: the caret duration back to 160 ms, the switch's and the
 #     caret's reduced-motion media blocks DELETED, and the notes that read them rewritten, so the
-#     byte count GROWS this time); diagnostics.revision is now 'rev-20 · the caret turn takes 160 ms'.
+#     byte count GREW that time); diagnostics.revision BECAME 'rev-20 · the caret turn takes 160 ms' ->
+#     158546 B / 5DE1F30C... (commit b0ad1eb, the user's own terminology pass, which landed AFTER the
+#     r20 canonical run -- see the WHY block above) ->
+#     159172 B / AE391909... (r21/t1: the badge prints the version id alone; diagnostics.revision
+#     is now 'rev-21 · the section badge prints the version id alone' and diagnostics.revisionId is
+#     the badge's text) ->
+#     166986 B / 04376143... (r22/t1: the bell rings when it is toggled -- the ring
+#     constants, the generated @keyframes, the arming hook and the re-keyed glyph) ->
+#     168920 B / DA25EB01... (r23/t1: that rattle is replaced by ONE lean past rest and a
+#     settle -- a 9 deg peak, a scale track and a long-tail ease-out) ->
+#     179451 B / 0BDAC98C... (r24/t1: the tilt is deleted outright and the bell stops moving;
+#     the MUTE is drawn instead -- the slash's stroke travels the diagonal while the blue fill dims on
+#     the same 240 ms clock, and the stroke is pushed BEFORE the bell so the silhouette paints over it;
+#     diagnostics.revision is now 'rev-24 · muting draws the slash instead of moving the bell').
 #   - verify/client-half.test.mjs 95803 B / 97EEB2D0... -> 100983 B / AB6F7E48... -> 101496 B /
 #     B24E22E8... -> 101901 B /
 #     6DBDF454... -> 103459 B / C156BBB2... (r20/t1: the stamp, the duration pin
 #     400 -> 160 and the assertion names that read them; the reduce-motion section is REWRITTEN --
 #     the two "the caret has its own override" checks are replaced by three that assert the opposite
 #     (no reduced-motion block is emitted, the product carries none at all, the caret keeps its ONE
-#     transition in every environment). The assertion count is 400 now (was 399).
+#     transition in every environment). The assertion count was 400 then (399 before it) ->
+#     103457 B / 5D117404... (commit b0ad1eb, same terminology pass) ->
+#     104904 B / 5FAA8FEF... (r21/t1: the badge/id assertions and the version literal --
+#     FOUR new checks; the assertion count is 404 now (400 before it)) ->
+#     111255 B / 75218CE8... (r22/t1: SEVENTEEN ring checks -- the reported
+#     constants, the generated keyframes and their decay, the crown pivot, the untouched button, the
+#     silent first paint and the click that arms it; the assertion count was 421 then) ->
+#     112635 B / 9BA8B577... (r23/t1: the section is rewritten for the tilt -- twenty
+#     checks, two of which measure the SHAPE the user asked for: the ONE zero crossing and the bound on
+#     the swell, plus a refusal of `ease-in-out` by name; the assertion count was 424 then) ->
+#     121975 B / 1BCC6FAF... (r24/t1: the section is rewritten AGAIN -- twenty-two checks about the
+#     draw, the sweep, the blue fill, the paint order and the ABSENCE of every tilt rule, because "the
+#     bell does not move" is what a later edit breaks by re-adding a keyframe nobody asked for; the
+#     assertion count is 442 now).
 #   - verify/custom-audio.test.mjs 20263 B / 523572EA... -> 20263 B / 6EF2F162... -> 20263 B /
 #     B2C82501... -> 20263 B / D4B610DF... -- ONE byte each time (the version
-#     literal at :267; the assertion count is unchanged at 75 checks).
-#   - probe-20-r14-bell-appearance.mjs is 37/37 checks (was 30) with 26 declared mutants (was 20).
+#     literal at :267; the assertion count is unchanged at 75 checks) ->
+#     20263 B / 49B0493E... (r21/t1: the same literal; the count is still 75) ->
+#     20263 B / 11DAF28B... (r22/t1: the same literal; the count is still 75) ->
+#     20263 B / 2D712A6D... (r23/t1: the same literal; the count is still 75) ->
+#     20263 B / D2DE24C1... (r24/t1: the same literal; the count is still 75).
+#   - probe-20-r14-bell-appearance.mjs is 58/58 checks (was 49) with 26 declared mutants (was 20).
+#     r22/t1 added group 7 (ten ring checks), r23/t1 rewrote it for the tilt (twelve checks) and r24/t1
+#     rewrote it AGAIN as a four-state CASCADE SIMULATION (twenty checks: the winner among competing
+#     rules in each of audible/muted x clicked/not-yet-clicked, the opacity that leaves no dot, the
+#     paint order of the rendered glyph, and the absence of every tilt rule); NO mutant was added or
+#     renamed by any round, and --mutate=all re-measures that claim: all twenty-six declared red sets
+#     are unchanged.
 #   - lib/index.js (the HOST half), verify/host-half.test.mjs, verify/waterfall.test.mjs,
 #     verify/_harness.mjs, package.json and cordis.patch.yml are UNCHANGED.
 # THE PREVIOUS ROUND IS RECORDED ELSEWHERE: the rev-19 narrative that used to sit here (the 300 ms
@@ -174,7 +273,7 @@
 #     regression set must exit 0: the other 14 probes (including the new r15t2 failure-path
 #     probe), probe-11's / probe-17's / probe-19's / probe-20's mutation modes, probe-18's
 #     --mutate=all, both probe-18 race measurements, the r15t2 --mutant mode, and the four
-#     author suites (124 / 399 / 22 / 75 = 620 checks). The ten rev-1 ... rev-3 legacy probes
+#     author suites (124 / 442 / 22 / 75 = 663 checks). The ten rev-1 ... rev-3 legacy probes
 #     are green since r15/t3 and are no longer tolerated non-zero.
 #
 # THE FROZEN MANIFEST (section 0) is a hard-coded 9-file table -- lib/client.js, lib/index.js,
@@ -242,17 +341,17 @@ function Get-FailedAssertions {
   return @(Select-String -Path $LogPath -Pattern '^    FAILED: ' -Encoding UTF8 | ForEach-Object { $_.Line.Substring('    FAILED: '.Length).Trim() })
 }
 
-# THE FROZEN MANIFEST -- 9 files, re-anchored to the rev-20 baseline. Re-anchoring this table
+# THE FROZEN MANIFEST -- 9 files, re-anchored to the rev-24 baseline. Re-anchoring this table
 # is the ONLY edit a future revision should need here (plus the two anchors in section 0c).
 $frozenManifest = @(
-  @{ path = 'lib\client.js';               bytes = 158549; sha = '4B6C8B91F0C294A0E2C561934C8ED627C7D3F937CFF33904A8FACA651A5949F3' },
+  @{ path = 'lib\client.js';               bytes = 179451; sha = '0BDAC98C5F9AB06F687A9856238EA7C7302A5E7F6CDEDD9CBBA6CDEBCEA49958' },
   @{ path = 'lib\index.js';                bytes = 46638;  sha = '03778391E15163487BC0F26082A73CBA15FAAF44CDC2CF93B0C185D75FB0B938' },
   @{ path = 'verify\_harness.mjs';         bytes = 24855;  sha = 'DD1D6E8123D81A3E4FD27155C3850ACA444734E0A4652ACD052E9240A4286BB0' },
-  @{ path = 'verify\client-half.test.mjs'; bytes = 103459;  sha = 'C156BBB2BC7C12EA30237CF13AAF0308B0A152C26B7F72D9A2411787C2948622' },
-  @{ path = 'verify\custom-audio.test.mjs'; bytes = 20263; sha = 'D4B610DF4ACFDB5156EC14EA4DF8BB95D19D7099E097FB998EACDB92311E8686' },
+  @{ path = 'verify\client-half.test.mjs'; bytes = 121975;  sha = '1BCC6FAF5C40E64D9023E7EF19B97A548EA422CB9ADD4C943068400706916895' },
+  @{ path = 'verify\custom-audio.test.mjs'; bytes = 20263; sha = 'D2DE24C11CA2699738E975476C9659976FC44C201C9F0174567BCE1551F4CD8C' },
   @{ path = 'verify\host-half.test.mjs';   bytes = 29685;  sha = '8AF6315DB2B48A6F089E7DEF96B6C281921209ED0E69799CCFAFD1BC04A3146B' },
   @{ path = 'verify\waterfall.test.mjs';   bytes = 8888;   sha = '010811A5D233C70B058198056BC73B1A9DE1B17560E8A76626F0FE6D4BD6EFC9' },
-  @{ path = 'package.json';                bytes = 664;    sha = 'FF68D824385654AAB3B489AA9D2709B55DB67671E1974E41A27BE762E448284A' },
+  @{ path = 'package.json';                bytes = 732;    sha = 'D78E27106F6876C75A218DDDF0A9F71D3B7C7183FA8579D2941AE2E9D29F1A52' },
   @{ path = 'cordis.patch.yml';            bytes = 809;    sha = '505A61D6FD1F63A4FB2CE208AE3FC481FFF862D7A212D9530E5D3502683BD3C0' }
 )
 $docPaths = @('README.md', 'CHANGELOG.md')
@@ -324,8 +423,8 @@ $reviewerProbes = @(
      why = 'STILL GREEN at rev-14: the rev-5 415 / extension-name rules it checks have not moved.' }
   @{ name = 'reqcheck.mjs'; path = Join-Path $workspace '.scratch\reviewer-r5\reqcheck.mjs'; expectedExit = 1; marker = 'reqcheck.mjs:251';
      why = 'same rev-5 render harness as reqcheck-rev5.mjs (a duplicate snapshot taken at the time): one registration per rev-5, two since rev-10, so it captures the bell and dies at reqcheck.mjs:251 before any assertion runs.' }
-  @{ name = 'probe-r7-reqcheck.mjs'; path = Join-Path $workspace '.scratch\reviewer-r7\probe-r7-reqcheck.mjs'; expectedExit = 1; marker = '7 failed';
-     why = 'the rev-7 review probe. Seven of its assertions pin the rev-7 product, each superseded on purpose: the rev-7 stamp literal (line 82), the badge text (line 477), "exactly one slots.inject / one register" (lines 398/400/414 -- rev-10 added the session-header bell, so there are two), the over-broad "the old plugin title string must not occur in client.js" substring check (line 452 -- rev-10 introduced an aria-label that legitimately contains those words), and the pre-rev-12 co-location regex that wants box-sizing:content-box and max-height:84px in ONE rule (line 497 -- rev-12 split that rule; probe-11 re-derives the resolved values by cascade). Rewriting those expectations would erase the rev-7 record; the rev-14 facts are covered by probe-17/probe-11.' }
+  @{ name = 'probe-r7-reqcheck.mjs'; path = Join-Path $workspace '.scratch\reviewer-r7\probe-r7-reqcheck.mjs'; expectedExit = 1; marker = '8 failed';
+     why = 'the rev-7 review probe. EIGHT of its assertions pin a superseded product, each on purpose: the rev-7 stamp literal (line 82); "the bundle revision stamp is on the page" (line 477 -- the badge text, and since rev-21 the badge prints the version ID alone, so the page carries diagnostics.revisionId and no longer carries diagnostics.revision); "exactly one slots.inject / one register" (lines 398/400/414 -- rev-10 added the session-header bell, so there are two); the over-broad "the old plugin title string must not occur in client.js" substring check (line 452 -- rev-10 introduced an aria-label that legitimately contains those words); the pre-rev-12 co-location regex that wants box-sizing:content-box and max-height:84px in ONE rule (line 497 -- rev-12 split that rule; probe-11 re-derives the resolved values by cascade); and the intro-line text (commit b0ad1eb renamed the DSH process in the user-visible copy, so the rev-7 wording is gone). Rewriting those expectations would erase the rev-7 record; the live facts are covered by probe-17 (slot counts, page controls, the badge) and probe-11.' }
 )
 # probe-r7-reqcheck's registered red set, verbatim -- drift fails this run.
 $reviewerRedSet = @{
@@ -335,16 +434,19 @@ $reviewerRedSet = @{
     'exactly one registration landed',
     'client.js has exactly one slots.inject / one slots.register call site',
     'no competing page-level title remains',
+    # rev-21: the badge renders the ID alone, so the page no longer carries the full stamp.
     'the bundle revision stamp is on the page',
+    # commit b0ad1eb renamed the DSH process in the user-visible copy; the rev-7 wording is gone.
+    'the intro line is present',
     '::picker(select) keeps content-box + max-height:84px'
   )
 }
 
-# r15/t6: the red set of probe-r7-reqcheck is a FUNCTION OF TWO FILES. Its group E asserts that
-# CHANGELOG.md anchors the LIVE lib/client.js byte count and sha256, and CHANGELOG.md is owned by a
-# different task in this round. While CHANGELOG still carries the rev-14 anchors those two checks are
-# red as well (9 red for the probe); once CHANGELOG is re-anchored to rev-15 they turn green and the
-# recorded 7-red set is exact again. BOTH states are checked as an EXACT set -- the two names are
+# The red set of probe-r7-reqcheck is a FUNCTION OF TWO FILES. Its group E asserts that CHANGELOG.md
+# anchors the LIVE lib/client.js byte count and sha256, and CHANGELOG.md is re-anchored by this round's
+# documentation task. While CHANGELOG still carries the PREVIOUS revision's anchors those two checks
+# are red as well (ten red for the probe); once CHANGELOG is re-anchored they turn green and the
+# recorded eight-red set is exact again. BOTH states are checked as an EXACT set -- the two names are
 # required to be RED in one state and GREEN in the other, nothing is tolerated and nothing is
 # softened. The state is measured from CHANGELOG.md itself and printed in section 6.
 $clientHashForChangelog = (Get-FileHash (Join-Path $plugin 'lib\client.js') -Algorithm SHA256).Hash
@@ -388,7 +490,7 @@ function Get-DocListing {
   })
 }
 
-Write-Host '=== 0. frozen manifest: 9 recorded files byte-identical to the rev-20 baseline ==='
+Write-Host '=== 0. frozen manifest: 9 recorded files byte-identical to the rev-24 baseline ==='
 foreach ($row in $frozenManifest) {
   $full = Join-Path $plugin $row.path
   if (-not (Test-Path $full)) {
@@ -406,7 +508,7 @@ foreach ($row in $frozenManifest) {
   }
 }
 $before = Get-FrozenListing
-$beforePath = Join-Path $raw 'r20-baseline-before.txt'
+$beforePath = Join-Path $raw 'r24-baseline-before.txt'
 Write-Utf8 -Path $beforePath -Lines $before
 Write-Host ("{0} frozen files recorded -> {1}" -f $before.Count, $beforePath)
 
@@ -431,9 +533,9 @@ if ($unrecorded.Count -eq 0) {
 
 Write-Host ''
 Write-Host '=== 0c. the revision anchors this run asserts against, and the doc drift note ==='
-Write-Host 'rev-20 changed lib/client.js and verify/: lib/index.js must still be the rev-11 bytes.'
+Write-Host 'rev-24 changed lib/client.js and verify/: lib/index.js must still be the rev-11 bytes.'
 foreach ($row in @(
-    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 158549; sha = '4B6C8B91F0C294A0E2C561934C8ED627C7D3F937CFF33904A8FACA651A5949F3' },
+    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 179451; sha = '0BDAC98C5F9AB06F687A9856238EA7C7302A5E7F6CDEDD9CBBA6CDEBCEA49958' },
     @{ path = (Join-Path $plugin 'lib\index.js'); bytes = 46638;  sha = '03778391E15163487BC0F26082A73CBA15FAAF44CDC2CF93B0C185D75FB0B938' })) {
   $item = Get-Item $row.path
   $hash = (Get-FileHash $row.path -Algorithm SHA256).Hash
@@ -462,7 +564,7 @@ Write-Host ''
 Write-Host '=== 1. implementer harness suites (read-only re-run) ==='
 foreach ($suite in @('host-half', 'client-half', 'waterfall', 'custom-audio')) {
   $test = Join-Path $plugin "verify\$suite.test.mjs"
-  $log = Join-Path $raw "r20-dev-$suite.txt"
+  $log = Join-Path $raw "r24-dev-$suite.txt"
   $code = Invoke-Logged -Body { & node $test } -LogPath $log
   $summary = (Select-String -Path $log -Pattern '^=== ' -Encoding UTF8 | Select-Object -Last 1).Line
   Write-Host ("{0,-16} exit={1} :: {2}" -f $suite, $code, $summary)
@@ -477,11 +579,11 @@ Write-Host '=== 2. independent probes (the set run-r4 ... run-r7 shipped, plus p
 Push-Location $here
 foreach ($probe in $probes) {
   $name = [System.IO.Path]::GetFileNameWithoutExtension($probe)
-  $log = Join-Path $raw "r20-ind-$name.txt"
+  $log = Join-Path $raw "r24-ind-$name.txt"
   $code = Invoke-Logged -Body { & node $probe } -LogPath $log
   $summary = (Select-String -Path $log -Pattern '^### ' -Encoding UTF8 | Select-Object -Last 1).Line
   # r15/t6: the r15t2 failure-path probe does not print a '### ' banner (it prints
-  # '=== shipped rev-20 run: 42/42 checks passed ==='), so fall back to the last non-empty line
+  # '=== shipped rev-24 run: 42/42 checks passed ==='), so fall back to the last non-empty line
   # rather than reporting an empty summary for a probe that passed.
   if (-not $summary) {
     $summary = (Get-Content $log -Encoding UTF8 | Where-Object { $_.Trim().Length -gt 0 } | Select-Object -Last 1)
@@ -516,7 +618,7 @@ Pop-Location
 Write-Host ''
 Write-Host '=== 2b. probe-19 falsifiability: the rev-12 parity claim must be able to go RED ==='
 Push-Location $here
-$parityMutationLog = Join-Path $raw 'r20-ind-probe-19-mutations.txt'
+$parityMutationLog = Join-Path $raw 'r24-ind-probe-19-mutations.txt'
 $parityMutationCode = Invoke-Logged -Body { & node 'probe-19-r12-select-parity.mjs' '--mutate=all' } -LogPath $parityMutationLog
 $paritySummary = (Select-String -Path $parityMutationLog -Pattern '^### mutation ' -Encoding UTF8 | ForEach-Object { $_.Line.Trim() })
 $parityVerdict = (Select-String -Path $parityMutationLog -Pattern '^probe-19 verdict' -Encoding UTF8 | Select-Object -Last 1).Line
@@ -530,7 +632,7 @@ Pop-Location
 Write-Host ''
 Write-Host '=== 2c. probe-11 falsifiability: the row-arithmetic probe must go RED too ==='
 Push-Location $here
-$rowMutationLog = Join-Path $raw 'r20-ind-probe-11-mutations.txt'
+$rowMutationLog = Join-Path $raw 'r24-ind-probe-11-mutations.txt'
 $rowMutationCode = Invoke-Logged -Body { & node 'probe-11-r4-css-rows.mjs' '--mutate=card-cap-92px' } -LogPath $rowMutationLog
 $rowRed = ((Select-String -Path $rowMutationLog -Pattern 'checks that turned red' -Encoding UTF8 | ForEach-Object { $_.Line.Trim() }) -join '')
 $rowVerdict = ((Select-String -Path $rowMutationLog -Pattern '^\[(PASS|FAIL)\] every expected check failed|^\[(PASS|FAIL)\] no undeclared check turned red|^\[(PASS|FAIL)\] the mutation really rewrote' -Encoding UTF8 | ForEach-Object { $_.Line.Trim() }) -join ' | ')
@@ -550,7 +652,7 @@ Write-Host 'provably differ. A caught mutant exits 0; a dead mutant or a drifted
 Push-Location $here
 $probe17Caught = 0
 foreach ($mutation in @('slot', 'order', 'heading', 'picker', 'rogue')) {
-  $log = Join-Path $raw "r20-ind-probe-17-mut-$mutation.txt"
+  $log = Join-Path $raw "r24-ind-probe-17-mut-$mutation.txt"
   $code = Invoke-Logged -Body { & node 'probe-17-r7-section.mjs' "--mutate=$mutation" } -LogPath $log
   $summary = (Select-String -Path $log -Pattern '^### ' -Encoding UTF8 | Select-Object -Last 1).Line
   $verdict = ((Select-String -Path $log -Pattern 'every expected check failed under|no undeclared check turned red|the mutation really rewrote the evaluated source' -Encoding UTF8 | ForEach-Object { $_.Line.Trim() }) -join ' | ')
@@ -563,13 +665,13 @@ Write-Host ("probe-17 mutants caught exactly as declared: {0}/5" -f $probe17Caug
 Pop-Location
 
 Write-Host ''
-Write-Host '=== 2e. probe-20 falsifiability: the SESSION-BELL + CARET APPEARANCE and the rev-18 REDUCED-MOTION DIAGNOSTIC (rev-13, rev-14, the r16/t1 gap, the r17/t1 turn, the rev-19 duration, the rev-20 deletion of both reduced-motion overrides) ==='
+Write-Host '=== 2e. probe-20 falsifiability: the SESSION-BELL + CARET APPEARANCE and the rev-18 REDUCED-MOTION DIAGNOSTIC (rev-13, rev-14, the r16/t1 gap, the r17/t1 turn, the rev-19 duration, the rev-20 deletion of both reduced-motion overrides, the rev-22 ring, the rev-23 tilt, the rev-24 draw) ==='
 Write-Host 't3 measured that this appearance had NO independent mutation coverage: four undeclared bell'
 Write-Host 'mutations reddened nothing in probe-18, and probe-11/17/19 never name .dacBell. probe-20'
 Write-Host 'declares TWENTY-SIX appearance mutants; each must rewrite the source, redden EXACTLY its declared'
 Write-Host 'checks and exit 0, and all twenty-six red sets must be pairwise different.'
 Push-Location $here
-$bellMutationLog = Join-Path $raw 'r20-ind-probe-20-mutations.txt'
+$bellMutationLog = Join-Path $raw 'r24-ind-probe-20-mutations.txt'
 $bellMutationCode = Invoke-Logged -Body { & node 'probe-20-r14-bell-appearance.mjs' '--mutate=all' } -LogPath $bellMutationLog
 $bellMutationSummary = (Select-String -Path $bellMutationLog -Pattern '^### mutation summary: ' -Encoding UTF8 | Select-Object -Last 1).Line
 $bellVerdicts = ((Select-String -Path $bellMutationLog -Pattern '^\[(PASS|FAIL)\] ' -Encoding UTF8 | ForEach-Object { $_.Line.Trim() }) -join ' | ')
@@ -581,7 +683,7 @@ if ($bellMutationCode -ne 0) { $failed += "probe-20 --mutate=all (exit $bellMuta
 $bellCaught = 0
 $bellMutations = @('muted-bell-filled', 'audible-hover-dropped', 'fill-hardcoded-hex', 'muted-icon-recolored', 'audible-foreground-recoloured', 'muted-rule-declares-fill', 'bell-glyph-shrunk-to-14', 'bell-svg-hardcoded-14', 'caret-css-hardcoded-12', 'caret-svg-hardcoded-9', 'bell-css-hardcoded-20', 'bell-caret-gap-removed', 'bell-caret-gap-constant-zeroed', 'caret-turn-transition-dropped', 'caret-turn-rule-dropped', 'caret-turn-angle-45-deg', 'caret-turn-ms-250', 'caret-turn-reduced-motion-restored', 'caret-turn-moved-to-button', 'caret-turn-also-when-closed', 'reduce-motion-boolean-snapshot', 'reduce-motion-always-false', 'reduce-motion-always-true', 'reduce-motion-cached-after-first-call', 'reduce-motion-asks-the-wrong-query', 'reduce-motion-snapshotted-into-sessionIcon')
 foreach ($mutation in $bellMutations) {
-  $log = Join-Path $raw "r20-ind-probe-20-mut-$mutation.txt"
+  $log = Join-Path $raw "r24-ind-probe-20-mut-$mutation.txt"
   $code = Invoke-Logged -Body { & node 'probe-20-r14-bell-appearance.mjs' "--mutate=$mutation" } -LogPath $log
   $anchorLine = (Select-String -Path $log -Pattern '^############ anchor occurrences' -Encoding UTF8 | Select-Object -Last 1).Line
   $digestLine = (Select-String -Path $log -Pattern '^############ mutant source sha256' -Encoding UTF8 | Select-Object -Last 1).Line
@@ -608,7 +710,7 @@ Write-Host 'observes the real render tree, the diagnostics object and the record
 Write-Host 'convergence re-read FAILS. Its --mutant mode reverts sessionsReadFailed() to the rev-14 body'
 Write-Host 'IN MEMORY ONLY and requires the red set to be non-empty and EXACTLY the ten declared checks.'
 Push-Location $here
-$r15t2MutantLog = Join-Path $raw 'r20-ind-r15t2-independent-probe-mutant.txt'
+$r15t2MutantLog = Join-Path $raw 'r24-ind-r15t2-independent-probe-mutant.txt'
 $r15t2MutantCode = Invoke-Logged -Body { & node 'r15t2-independent-probe.mjs' '--mutant' } -LogPath $r15t2MutantLog
 $r15t2M1 = (Select-String -Path $r15t2MutantLog -Pattern '^M1: ' -Encoding UTF8 | Select-Object -Last 1).Line
 $r15t2M2 = (Select-String -Path $r15t2MutantLog -Pattern '^M2: ' -Encoding UTF8 | Select-Object -Last 1).Line
@@ -625,7 +727,7 @@ Pop-Location
 Write-Host ''
 Write-Host '=== 3. probe-18 falsifiability: every declared mutation must redden exactly its declared checks ==='
 Push-Location $here
-$mutationLog = Join-Path $raw 'r20-ind-probe-18-mutations.txt'
+$mutationLog = Join-Path $raw 'r24-ind-probe-18-mutations.txt'
 $mutationCode = Invoke-Logged -Body { & node 'probe-18-r10-sessions.mjs' '--mutate=all' } -LogPath $mutationLog
 $mutationSummary = (Select-String -Path $mutationLog -Pattern '^### mutation summary' -Encoding UTF8 | Select-Object -Last 1).Line
 $hashLines = ((Select-String -Path $mutationLog -Pattern '^### lib/(client|index)\.js' -Encoding UTF8 | ForEach-Object { $_.Line.Trim() }) -join ' | ')
@@ -639,7 +741,7 @@ Write-Host '=== 4. probe-18 race measurement (fast double-click, real host over 
 foreach ($mode in @(
     @{ tag = 'raw'; args = @('--race-rounds=1500', '--race-raw') },
     @{ tag = 'sidechannel'; args = @('--race-rounds=1500', '--race-sidechannel') })) {
-  $raceLog = Join-Path $raw ("r20-ind-probe-18-race-" + $mode.tag + ".txt")
+  $raceLog = Join-Path $raw ("r24-ind-probe-18-race-" + $mode.tag + ".txt")
   $raceCode = Invoke-Logged -Body { & node 'probe-18-r10-sessions.mjs' $mode.args } -LogPath $raceLog
   $raceLine = (Select-String -Path $raceLog -Pattern 'I1 measurement' -Encoding UTF8 | Select-Object -Last 1).Line
   $residualLine = (Select-String -Path $raceLog -Pattern 'RESIDUAL \(measured, reproducible\)|FINDING \(measured, reproducible\)' -Encoding UTF8 | Select-Object -Last 1).Line
@@ -655,7 +757,7 @@ Write-Host '=== 5. legacy probes from rev-1 ... rev-3 (green since r15-t3, re-an
 Push-Location $here
 foreach ($probe in $legacyProbes) {
   $name = [System.IO.Path]::GetFileNameWithoutExtension($probe)
-  $log = Join-Path $raw "r20-legacy-$name.txt"
+  $log = Join-Path $raw "r24-legacy-$name.txt"
   $code = Invoke-Logged -Body { & node $probe } -LogPath $log
   $summary = (Select-String -Path $log -Pattern '^### ' -Encoding UTF8 | Select-Object -Last 1).Line
   $failing = ((Select-String -Path $log -Pattern '^    FAILED: ' -Encoding UTF8 | ForEach-Object { $_.Line.Trim() }) -join ' ; ')
@@ -690,7 +792,7 @@ Write-Host ''
 Write-Host '=== 6. reviewer probes (read-only re-run; cwd = workspace root, which they resolve paths against) ==='
 Push-Location $workspace
 foreach ($probe in $reviewerProbes) {
-  $log = Join-Path $raw ("r20-reviewer-" + $probe.name.Replace('.mjs', '') + ".txt")
+  $log = Join-Path $raw ("r24-reviewer-" + $probe.name.Replace('.mjs', '') + ".txt")
   if (-not (Test-Path $probe.path)) {
     Write-Host ("{0,-24} SKIPPED (not found at {1})" -f $probe.name, $probe.path)
     continue
@@ -713,7 +815,7 @@ foreach ($probe in $reviewerProbes) {
   # described at $reviewerRedSetExtra. The count is still an exact requirement -- it is compared
   # against the count implied by the measured state of CHANGELOG.md, not against one frozen literal.
   $markerExpected = $probe.marker
-  if ($probe.name -eq 'probe-r7-reqcheck.mjs' -and -not $changelogAnchorsClientHash) { $markerExpected = '9 failed' }
+  if ($probe.name -eq 'probe-r7-reqcheck.mjs' -and -not $changelogAnchorsClientHash) { $markerExpected = '10 failed' }
   if ($probe.marker -and -not ((Get-Content $log -Raw -Encoding UTF8).Contains($markerExpected))) {
     Write-Host ("    REGISTERED MARKER MISSING: '{0}' is not in the log" -f $markerExpected) -ForegroundColor Red
     $failed += "reviewer/$($probe.name) (registered marker drifted)"
@@ -743,16 +845,16 @@ foreach ($probe in $reviewerProbes) {
 Pop-Location
 
 Write-Host ''
-Write-Host '=== 7b. rev-20 mutation table: every declared mutation re-measured on THESE bytes ==='
-Write-Host 'verify-independent/r15t6-mutation-table.mjs refuses to run unless lib/client.js is the rev-20'
+Write-Host '=== 7b. rev-24 mutation table: every declared mutation re-measured on THESE bytes ==='
+Write-Host 'verify-independent/r15t6-mutation-table.mjs refuses to run unless lib/client.js is the rev-24'
 Write-Host 'bytes, re-runs all 44 declared probe-11/17/18/19/20 mutations plus the r15 failure-path mutant'
-Write-Host '(one run, ten declared red checks) and writes _raw/r20-evidence/r20-t1-mutation-table.json/.md. Any row that'
+Write-Host '(one run, ten declared red checks) and writes _raw/r24-evidence/r24-t1-mutation-table.json/.md. Any row that'
 Write-Host 'did not rewrite the source, whose anchor is not unique, whose red set is not exactly the one it'
 Write-Host 'declared, or that exited non-zero makes this section fail.'
 Push-Location $plugin
-$mutationTableLog = Join-Path $raw 'r20-t1-mutation-table-console.txt'
+$mutationTableLog = Join-Path $raw 'r24-t1-mutation-table-console.txt'
 $mutationTableCode = Invoke-Logged -Body { & node 'verify-independent/r15t6-mutation-table.mjs' } -LogPath $mutationTableLog
-$mutationTableLine = (Select-String -Path $mutationTableLog -Pattern '^r20 mutation table: ' -Encoding UTF8 | Select-Object -Last 1).Line
+$mutationTableLine = (Select-String -Path $mutationTableLog -Pattern '^r21 mutation table: ' -Encoding UTF8 | Select-Object -Last 1).Line
 $mutationTableResult = (Select-String -Path $mutationTableLog -Pattern '^RESULT: ' -Encoding UTF8 | Select-Object -Last 1).Line
 Write-Host ("mutation table exit={0} :: {1}" -f $mutationTableCode, $mutationTableLine)
 Write-Host ("    {0}" -f $mutationTableResult)
@@ -763,10 +865,10 @@ Pop-Location
 Write-Host ''
 Write-Host '=== 7. frozen-manifest diff (before vs after the run) ==='
 $after = Get-FrozenListing
-$afterPath = Join-Path $raw 'r20-baseline-after.txt'
+$afterPath = Join-Path $raw 'r24-baseline-after.txt'
 Write-Utf8 -Path $afterPath -Lines $after
 $diff = Compare-Object -ReferenceObject $before -DifferenceObject $after
-$diffPath = Join-Path $raw 'r20-frozen-diff.txt'
+$diffPath = Join-Path $raw 'r24-frozen-diff.txt'
 if ($diff) {
   $lines = @($diff | ForEach-Object { "{0} {1}" -f $_.SideIndicator, $_.InputObject })
   Write-Utf8 -Path $diffPath -Lines $lines
@@ -811,7 +913,7 @@ if ($failed.Count -eq 0) {
   Write-Host '(section 2f, exactly its ten declared red checks) rewrite the source, redden EXACTLY their'
   Write-Host 'declared checks and exit 0; the ten rev-1 ... rev-3 legacy probes are GREEN since r15/t3 and a'
   Write-Host 'non-zero exit from any of them now FAILS the run; probe-18 race measurements ran; the 9 frozen files'
-  Write-Host 'are byte-identical to the rev-20 manifest before and after; the four .scratch reviewer probes still'
+  Write-Host 'are byte-identical to the rev-24 manifest before and after; the four .scratch reviewer probes still'
   Write-Host 'match their registered exit codes and red sets (three are registered non-zero, see section 6).'
 } else {
   Write-Host ('FAILURES: ' + ($failed -join ', ')) -ForegroundColor Red

@@ -847,13 +847,23 @@ async function main() {
     const icons = (tree) => {
       const svg = findAll(tree, (node) => node.type === 'svg')[0];
       const paths = svg === undefined ? [] : svg.children.filter((child) => child !== null && typeof child === 'object' && child.type === 'path');
-      return { pathCount: paths.length, hasSlash: paths.some((path) => path.props.className === 'dacSlash') };
+      const bell = byClass(tree, 'dacBell')[0];
+      return { pathCount: paths.length, hasSlash: paths.some((path) => path.props.className === 'dacSlash'), muted: bell === undefined ? null : bell.props['data-muted'] };
     };
     const unmutedIcons = icons(treeOn);
     const mutedIcons = icons(treeOff);
+    /* rev-24 note, earned by a mutation run rather than by reasoning: from rev-24 the slash can be
+     * present for a SECOND reason -- the toggle counter keeps the node mounted while AUDIBLE, so that
+     * un-muting has an element to animate -- and this check drives its "muted" tree by CLICKING the
+     * bell, which is what bumps that counter. The old form (2 paths vs 3) therefore stayed GREEN under
+     * the `mute-ignored` mutant: the two icons still differed, but no longer because the MUTE FLAG
+     * differed, which is the actual claim. The mute attribute is asserted here alongside the icon, so
+     * the PAIR -- state and drawing together -- is what has to hold, and that mutant reddens this
+     * check again instead of quietly losing its falsifier. */
     check(
       'B4.icon-two-states',
-      unmutedIcons.pathCount === 2 && unmutedIcons.hasSlash === false && mutedIcons.pathCount === 3 && mutedIcons.hasSlash === true,
+      unmutedIcons.pathCount === 2 && unmutedIcons.hasSlash === false && unmutedIcons.muted === 'false'
+        && mutedIcons.pathCount === 3 && mutedIcons.hasSlash === true && mutedIcons.muted === 'true',
       `unmuted=${show(unmutedIcons)} muted=${show(mutedIcons)}`,
     );
     check('B5.no-session-id-renders-nothing', mount(Component, {}, answeredBundle.runtime).tree === null, 'props {} -> null');
@@ -1584,8 +1594,8 @@ async function main() {
     // (so the badge must render what the bundle reports, whatever that is) and
     // against the expected rev-11 constant (so a stale/forgotten bump still goes
     // red once instead of silently passing).
-    const EXPECTED_REVISION = 'rev-20 · the caret turn takes 160 ms';
-    check('H6.stats-and-revision', labels.includes('已触发') && labels.includes(bundle.diagnostics.revision) && bundle.diagnostics.revision === EXPECTED_REVISION, `revision=${show(bundle.diagnostics.revision)} rendered=${labels.includes(bundle.diagnostics.revision)} expected=${show(EXPECTED_REVISION)}`);
+    const EXPECTED_REVISION = 'rev-24 · muting draws the slash instead of moving the bell';
+    check('H6.stats-and-revision', labels.includes('已触发') && labels.includes(bundle.diagnostics.revisionId) && !labels.includes(bundle.diagnostics.revision) && bundle.diagnostics.revision === EXPECTED_REVISION, `revision=${show(bundle.diagnostics.revision)} id=${show(bundle.diagnostics.revisionId)} rendered=${labels.includes(bundle.diagnostics.revisionId)} prose-on-page=${labels.includes(bundle.diagnostics.revision)} expected=${show(EXPECTED_REVISION)}`);
     check('H7.picker-select-css', bundle.styles().includes('::picker(select)') && bundle.styles().includes('appearance:base-select'), 'the @supports (appearance:base-select) block is still injected');
     check('H8.custom-limit-50', clientSource.includes('var CUSTOM_LIMIT = 50;') && labels.includes('导入音频'), 'CUSTOM_LIMIT = 50 at lib/client.js:193, import control rendered');
     check('H9.tone-rows-3', bundle.diagnostics.toneRows === 3, `toneRows=${bundle.diagnostics.toneRows}`);

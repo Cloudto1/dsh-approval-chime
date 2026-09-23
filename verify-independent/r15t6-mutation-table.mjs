@@ -1,13 +1,13 @@
 /**
- * r15 / t6, re-anchored by r16 / t1, by r17 / t1, by r18 / t1, by r18b / t5, by r18c / t7, by r19 / t2 and now by r20 / t1 -- the MUTATION TABLE:
- * every declared mutation re-measured on the rev-20 bytes. The instrument is the r15 round's;
+ * r15 / t6, re-anchored by r16 / t1, by r17 / t1, by r18 / t1, by r18b / t5, by r18c / t7, by r19 / t2, by r20 / t1, by r21 / t1, by r22 / t1, by r23 / t1 and now by r24 / t1 -- the MUTATION TABLE:
+ * every declared mutation re-measured on the rev-24 bytes. The instrument is the r15 round's;
  * only its fingerprints and its row list move, round after round.
  *
  * Derived from _raw/r13c-mutation-table.mjs (the round that first made this table machine-readable).
  * The differences are deliberate and few:
- *   - it REFUSES to run unless lib/client.js is the rev-20 bytes (sha256 + size asserted), so a
+ *   - it REFUSES to run unless lib/client.js is the rev-24 bytes (sha256 + size asserted), so a
  *     table for another revision can never be mislabelled as this one;
- *   - its logs are `_raw/r20-evidence/r20-mut-*.txt`, so the r13c, r15, r16, r17, r18, r18b, r18c AND r19 logs stay untouched;
+ *   - its logs are `_raw/r24-evidence/r24-mut-*.txt`, so the r13c, r15, r16, r17, r18, r18b, r18c, r19, r20 AND r21 logs stay untouched;
  *   - it adds the r15 failure-path mutant (`r15t2-independent-probe.mjs --mutant`, t2's probe) as
  *     one row with declared=observed=its ten declared red checks;
  *   - the same three questions are answered per row as before: did the mutation really rewrite the
@@ -28,17 +28,17 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const RAW = join(HERE, '_raw');
 /* r20/t1: this round's logs and its table live in their own directory under _raw/, so a later
  * round's prefix row cannot overwrite them and this round's scope stays one directory deep. */
-const EVIDENCE = join(RAW, 'r20-evidence');
+const EVIDENCE = join(RAW, 'r24-evidence');
 mkdirSync(EVIDENCE, { recursive: true });
 const PLUGIN = join(HERE, '..');
 const CLIENT = join(PLUGIN, 'lib', 'client.js');
-const FROZEN = { sha256: '4B6C8B91F0C294A0E2C561934C8ED627C7D3F937CFF33904A8FACA651A5949F3', bytes: 158549 };
+const FROZEN = { sha256: '0BDAC98C5F9AB06F687A9856238EA7C7302A5E7F6CDEDD9CBBA6CDEBCEA49958', bytes: 179451 };
 const EXPECTED_ROWS = 45;
 
 const digest = (buffer) => createHash('sha256').update(buffer).digest('hex').toUpperCase();
 
 /** The 29 mutations the r13c table declared + the 2 r16/t1 gap mutants + the 7 r17/t2 caret-turn
- * mutants + the 6 r18/t2 reduce-motion mutants, re-run on the rev-20 bytes. */
+ * mutants + the 6 r18/t2 reduce-motion mutants, re-run on the rev-24 bytes. */
 const MUTATIONS = [
   ['probe-11-r4-css-rows', 'card-cap-92px'],
   ['probe-17-r7-section', 'slot'],
@@ -113,7 +113,7 @@ const scrub = (text) => (text === null ? null : text.replace(/\s+/g, ' ').trim()
 const shipped = readFileSync(CLIENT);
 const shippedSha = digest(shipped);
 if (shippedSha !== FROZEN.sha256 || shipped.length !== FROZEN.bytes) {
-  console.error(`REFUSING: lib/client.js is ${shipped.length} B / ${shippedSha}, not the rev-20 artifact ${FROZEN.bytes} B / ${FROZEN.sha256}`);
+  console.error(`REFUSING: lib/client.js is ${shipped.length} B / ${shippedSha}, not the rev-24 artifact ${FROZEN.bytes} B / ${FROZEN.sha256}`);
   process.exit(1);
 }
 
@@ -121,7 +121,7 @@ const rows = [];
 let bad = 0;
 
 for (const [probe, mutation] of MUTATIONS) {
-  const logPath = join(RAW, `r20-evidence/r20-mut-${probe}-${mutation}.txt`);
+  const logPath = join(RAW, `r24-evidence/r24-mut-${probe}-${mutation}.txt`);
   const fd = openSync(logPath, 'w');
   let result;
   try {
@@ -168,7 +168,7 @@ for (const [probe, mutation] of MUTATIONS) {
 
 /* ---- the r15 failure-path mutant (t2's probe): one run, ten declared red checks ---- */
 
-const r15t2Log = join(RAW, 'r20-evidence/r20-mut-r15t2-independent-probe-sessionsreadfailed-reverted.txt');
+const r15t2Log = join(RAW, 'r24-evidence/r24-mut-r15t2-independent-probe-sessionsreadfailed-reverted.txt');
 const r15t2Fd = openSync(r15t2Log, 'w');
 let r15t2Result;
 try {
@@ -217,7 +217,7 @@ if (rows.length !== EXPECTED_ROWS) {
 
 const table = {
   generatedBy: 'r15t6-mutation-table.mjs',
-  revision: 'rev-20',
+  revision: 'rev-24',
   clientSha256: shippedSha,
   clientBytes: shipped.length,
   exitCodesMeasuredLive: true,
@@ -225,32 +225,32 @@ const table = {
   okCount: rows.filter((row) => row.ok).length,
   rows,
 };
-writeFileSync(join(RAW, 'r20-evidence/r20-t1-mutation-table.json'), `${JSON.stringify(table, null, 2)}\n`, 'utf8');
+writeFileSync(join(RAW, 'r24-evidence/r24-t1-mutation-table.json'), `${JSON.stringify(table, null, 2)}\n`, 'utf8');
 
 const md = [
-  '# r20 · the rev-20 mutation table (every declared mutation re-measured on the rev-20 bytes)',
+  '# r24 · the rev-24 mutation table (every declared mutation re-measured on the rev-24 bytes)',
   '',
   `client.js under test : ${shipped.length} B / ${shippedSha}`,
   `mutations            : ${rows.length} rows, ${table.okCount} ok`,
-  `generated by         : verify-independent/r15t6-mutation-table.mjs (raw logs: _raw/r20-evidence/r20-mut-*.txt)`,
+  `generated by         : verify-independent/r15t6-mutation-table.mjs (raw logs: _raw/r24-evidence/r24-mut-*.txt)`,
   '',
   '| # | probe | mutation | declared | observed | exact | changed | anchor | exit | ok |',
   '|---|-------|----------|---------:|---------:|:-----:|:-------:|-------:|-----:|:--:|',
   ...rows.map((row, index) => `| ${index + 1} | ${row.probe} | ${row.mutation} | ${row.declared} | ${row.observed} | ${row.exact} | ${row.changed} | ${row.anchorCount} | ${row.exitCode} | ${row.ok} |`),
   '',
   bad === 0
-    ? `RESULT: all ${rows.length} declared mutations on the rev-20 bytes rewrite the evaluated source, match their anchor exactly once, redden exactly their declared checks and exit 0.`
+    ? `RESULT: all ${rows.length} declared mutations on the rev-24 bytes rewrite the evaluated source, match their anchor exactly once, redden exactly their declared checks and exit 0.`
     : `RESULT: ${bad} row(s) are NOT ok -- see the table above.`,
   '',
 ].join('\n');
-writeFileSync(join(RAW, 'r20-evidence/r20-t1-mutation-table.md'), md, 'utf8');
+writeFileSync(join(RAW, 'r24-evidence/r24-t1-mutation-table.md'), md, 'utf8');
 
-console.log(`r20 mutation table: rows=${rows.length} ok=${table.okCount} client.js=${shipped.length} B / ${shippedSha.slice(0, 16)}...`);
+console.log(`r24 mutation table: rows=${rows.length} ok=${table.okCount} client.js=${shipped.length} B / ${shippedSha.slice(0, 16)}...`);
 for (const row of rows) {
   if (row.ok) continue;
   console.log(`  NOT OK  ${row.probe} --mutate=${row.mutation}  exit=${row.exitCode} declared=${row.declared} observed=${row.observed} exact=${row.exact} changed=${row.changed} anchor=${row.anchorCount}`);
 }
 console.log(bad === 0
-  ? `RESULT: every one of the ${rows.length} declared mutations is ok on the rev-20 bytes.`
+  ? `RESULT: every one of the ${rows.length} declared mutations is ok on the rev-24 bytes.`
   : `RESULT: ${bad} problem(s).`);
 process.exit(bad === 0 ? 0 : 1);

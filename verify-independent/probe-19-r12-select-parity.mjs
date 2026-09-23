@@ -63,14 +63,14 @@ const HOST_PATH = join(PLUGIN, 'lib', 'index.js');
  */
 const FROZEN = {
   client: {
-    bytes: 158549,
-    sha256: '4B6C8B91F0C294A0E2C561934C8ED627C7D3F937CFF33904A8FACA651A5949F3',
+    bytes: 179451,
+    sha256: '0BDAC98C5F9AB06F687A9856238EA7C7302A5E7F6CDEDD9CBBA6CDEBCEA49958',
   },
   host: {
     bytes: 46638,
     sha256: '03778391E15163487BC0F26082A73CBA15FAAF44CDC2CF93B0C185D75FB0B938',
   },
-  revision: 'rev-20 · the caret turn takes 160 ms',
+  revision: 'rev-24 · muting draws the slash instead of moving the bell',
   /** 任务书里写的 client 字节数（用于把「字面值过期」和「产品回归」分开）。 */
   briefClientBytes: 137331,
 };

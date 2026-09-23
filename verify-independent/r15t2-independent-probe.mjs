@@ -54,11 +54,11 @@ const CLIENT_PATH = join(LIB_DIR, 'client.js');
 const VERIFY_DIR = join(PLUGIN_DIR, 'verify');
 const RAW_DIR = join(HERE, '_raw');
 
-/** The frozen rev-20 bytes this probe is anchored to (t7 close-out). */
+/** The frozen rev-24 bytes this probe is anchored to (t7 close-out). */
 const FROZEN = {
-  sha256: '4B6C8B91F0C294A0E2C561934C8ED627C7D3F937CFF33904A8FACA651A5949F3',
-  bytes: 158549,
-  revision: 'rev-20 · the caret turn takes 160 ms',
+  sha256: '0BDAC98C5F9AB06F687A9856238EA7C7302A5E7F6CDEDD9CBBA6CDEBCEA49958',
+  bytes: 179451,
+  revision: 'rev-24 · muting draws the slash instead of moving the bell',
 };
 
 const SESSIONS_ROUTE = '/api/approval-chime/sessions';
@@ -113,7 +113,7 @@ const REJECT_REASON = 'stub network down: the read was refused';
 const THROW_REASON = 'stub transport threw before the request left';
 const BAD_JSON_REASON = 'the Host refused the per-session request (200)';
 
-const AUTHOR = "the version of the bundle this repo ships as rev-20";
+const AUTHOR = "the version of the bundle this repo ships as rev-24";
 void AUTHOR; // kept only so the anchor comment above reads naturally
 
 /* ------------------------------------------------------------------ utilities */
@@ -1003,7 +1003,7 @@ async function main() {
   const libBefore = hashTree(LIB_DIR);
 
   report.check(
-    'A1: lib/client.js is the frozen rev-20 byte sequence',
+    'A1: lib/client.js is the frozen rev-24 byte sequence',
     shippedHash === FROZEN.sha256 && Buffer.byteLength(shippedText, 'utf8') === FROZEN.bytes,
     `sha256=${shippedHash} bytes=${Buffer.byteLength(shippedText, 'utf8')} expected=${FROZEN.sha256}/${FROZEN.bytes}`,
   );
@@ -1024,7 +1024,7 @@ async function main() {
   );
 
   let sourceText = shippedText;
-  let sourceLabel = 'shipped rev-20 bytes';
+  let sourceLabel = 'shipped rev-24 bytes';
   if (mutantMode) {
     const at = shippedText.indexOf(ANCHOR);
     const mutantText = shippedText.slice(0, at) + MUTANT + shippedText.slice(at + ANCHOR.length);
@@ -1091,7 +1091,7 @@ async function main() {
   const passed = report.checks.length - red.length;
 
   if (!mutantMode) {
-    console.log(`\n=== shipped rev-20 run: ${passed}/${report.checks.length} checks passed ===`);
+    console.log(`\n=== shipped rev-24 run: ${passed}/${report.checks.length} checks passed ===`);
     for (const name of red) console.log(`  RED: ${name}`);
     console.log(`exit ${red.length === 0 ? 0 : 1}`);
     process.exitCode = red.length === 0 ? 0 : 1;

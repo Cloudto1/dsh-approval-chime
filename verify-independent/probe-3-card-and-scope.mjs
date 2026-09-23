@@ -123,7 +123,7 @@ report.deep('the picker offers the three documented tones', elementsOfType(view.
 report.check('a preview button exists', buttonWith('试听') !== undefined, JSON.stringify(elementsOfType(view.tree, 'button').map(allText)));
 report.check('a reset button exists', buttonWith('恢复默认') !== undefined);
 report.check('the slider is enabled while the scope is writable', slider().props.disabled !== true);
-report.check('the card displays the bundle revision stamp', allText(view.tree).includes(diagnostics.revision), diagnostics.revision);
+report.check('the card displays the bundle revision id (rev-21: the badge prints the version id alone)', allText(view.tree).includes(diagnostics.revisionId) && !allText(view.tree).includes(diagnostics.revision), String(diagnostics.revisionId));
 report.check(
   'the bundled zh copy is used when the platform hands no translator (rev-7 renamed the page to 通知提醒)',
   allText(view.tree).includes('通知提醒') && allText(view.tree).includes('音量'),

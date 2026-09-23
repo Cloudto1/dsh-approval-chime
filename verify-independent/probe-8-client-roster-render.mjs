@@ -145,7 +145,7 @@ const harness = createClientHarness(sandbox, { scope });
 harness.apply();
 const diagnostics = harness.diagnostics;
 log.check('diagnostics surface installed', diagnostics !== null && typeof diagnostics === 'object');
-log.check('revision stamp names the revision under test (rev-20)', String(diagnostics.revision).includes('rev-20'), String(diagnostics.revision));
+log.check('revision stamp names the revision under test (rev-24)', String(diagnostics.revision).includes('rev-24'), String(diagnostics.revision));
 log.equal('diagnostics.toneRows', diagnostics.toneRows, 3);
 log.equal('diagnostics.customPrefix', diagnostics.customPrefix, 'custom:');
 log.deepEqual('master gain is unchanged by rev-4', diagnostics.masterGain, 0.6);
