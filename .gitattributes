@@ -1,0 +1,10 @@
+# Byte-exact verification: this repo's frozen manifest (verify-independent/run-r13.ps1
+# section 0) and every independent probe pin EXACT byte counts and sha256 for the files
+# they watch. Git's line-ending conversion rewrote those files on checkout, so a fresh
+# clone could not reproduce the manifest it verifies.
+#
+# `-text` disables ALL conversion (no CRLF<->LF translation, no clean/smudge filters), so
+# what is committed is byte-for-byte what was verified. Do not narrow this to `text eol=lf`
+# or `* text=auto`: either one would rewrite the files that currently carry CRLF (for
+# example lib/client.js, pinned at 235306 B / 389EEF36…) and break the manifest again.
+* -text
