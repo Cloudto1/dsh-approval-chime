@@ -49,6 +49,9 @@ report.same('the unlock flag stays false', diagnostics.audio().unlocked, false);
 report.group('2. the gesture unlock only resumes; it does not rebuild the graph');
 
 const oscillatorsBeforeUnlock = record.oscillators.length;
+// The page keeps permanent UI listeners (reflow/pointer/key), which unlocking must
+// NOT remove — so the check below is a delta, not an absolute zero (rev-4 assumed zero).
+const listenersBeforeUnlock = bundle.document.listenerCount();
 // Model the browser granting the resume on the user's first gesture.
 context.resume = function resume() {
   context.state = 'running';
@@ -65,7 +68,7 @@ report.check(
   record.starts.length >= 1 && record.stops.length === record.starts.length,
   `${record.starts.length} start(s), ${record.stops.length} stop(s)`,
 );
-report.same('the gesture listeners were released after unlocking', bundle.document.listenerCount(), 0);
+report.same('the gesture listeners were released after unlocking (exactly the 4 of GESTURE_EVENTS, lib/client.js:892)', bundle.document.listenerCount() + 4, listenersBeforeUnlock);
 
 report.group('3. the next approval is a fresh, immediate chime');
 

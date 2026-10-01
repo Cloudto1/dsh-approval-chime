@@ -587,6 +587,8 @@ function textOf(node) {
 /* ------------------------------------------------- the plugin context stub */
 
 const NS = 'approval-chime';
+// 0.1.7 binds settings by the profile entry id, not by the old hand-picked namespace.
+const ENTRY_ID = 'dsh-approval-chime';
 const SLOT = 'settings.section';
 
 /**
@@ -600,6 +602,7 @@ function makeCtx(options = {}) {
     registrations: [],
     localeRegistrations: [],
     boundNamespaces: [],
+    boundEntryIds: [],
     bindEvents: [],
     writeCalls: [],
     effectLabels: [],
@@ -689,10 +692,13 @@ function makeCtx(options = {}) {
       subscribe: () => () => {},
       getSnapshot: () => ({ revision: 0, locale: state.locale }),
     },
-    settingsScope: {
-      bind(spec) {
-        log.boundNamespaces.push(spec === undefined ? undefined : spec.namespace);
-        return scope;
+    // DSH 0.1.7 removed `settingsScope`; the bundle binds through
+    // `configForms.get(ENTRY_ID)`, which answers the same controller shape
+    // (getSnapshot / subscribe / set / unset) — lib/client.js:4351-4355.
+    configForms: {
+      get(namespace) {
+        log.boundEntryIds.push(namespace);
+        return namespace === ENTRY_ID ? scope : null;
       },
     },
     uiSession: {
@@ -737,11 +743,11 @@ report.group('0. the bytes under test are the shipped ones');
 report.note('file', CLIENT_PATH);
 report.note('bytes', CLIENT_BYTES);
 report.note('sha256', CLIENT_SHA256);
-report.same('lib/client.js byte count is what rev-24 claims', CLIENT_BYTES, 179451);
+report.same('lib/client.js byte count is what rev-29 claims', CLIENT_BYTES, 235306);
 report.same(
-  'lib/client.js sha256 is what rev-24 claims',
+  'lib/client.js sha256 is what rev-29 claims',
   CLIENT_SHA256,
-  '0BDAC98C5F9AB06F687A9856238EA7C7302A5E7F6CDEDD9CBBA6CDEBCEA49958',
+  '389EEF36A6193E9E869066D13C5A700DAACDC8EE05D812E3F2E702004504D981',
 );
 report.same('lib/client.js has no top-level import/export (it is a classic script)', /^import |^export /m.test(CLIENT_SOURCE), false);
 
@@ -781,8 +787,8 @@ const pick = (ctx) => {
 const entry = pick(ctx2)?.entry;
 report.same('the entry slot name (stub ledger)', entry?.name, SLOT);
 report.check('the component is a function component', typeof pick(ctx2)?.component === 'function');
-report.same('the settings namespace it binds is its own', ctx2.log.boundNamespaces[0], NS);
-report.check('no other namespace was bound', ctx2.log.boundNamespaces.every((ns) => ns === NS), JSON.stringify(ctx2.log.boundNamespaces));
+report.same('the settings ENTRY ID it binds is its own', ctx2.log.boundEntryIds[0], ENTRY_ID);
+report.check('no other entry id was bound', ctx2.log.boundEntryIds.every((ns) => ns === ENTRY_ID), JSON.stringify(ctx2.log.boundEntryIds));
 
 /* ------------------------------------------------ 2. settings.plugin.item is gone */
 
@@ -851,10 +857,17 @@ for (const [key, path] of Object.entries(HOST_FILES)) {
   hostOrders[key] = { path, sectionLine: hit.line, id: id?.[1], order: order === null ? null : Number(order[1]) };
 }
 report.note('host section registrations read first-hand', hostOrders);
-report.deep('general registers order 0', { line: hostOrders.general.sectionLine, order: hostOrders.general.order }, { line: 652, order: 0 });
-report.deep('models registers order 10', { line: hostOrders.models.sectionLine, order: hostOrders.models.order }, { line: 2937, order: 10 });
-report.deep('plugins registers order 15', { line: hostOrders.plugins.sectionLine, order: hostOrders.plugins.order }, { line: 1762, order: 15 });
-report.deep('agent-presets registers order 20', { line: hostOrders.presets.sectionLine, order: hostOrders.presets.order }, { line: 1520, order: 20 });
+// The line anchors above belong to the shell files THIS machine resolves. A bare line
+// number can drift when the npx cache is refilled with a rebuilt tarball of the same
+// version (that is exactly what happened between rev-29 and this re-anchor), so the
+// digests of the five shell files are recorded here: a future drift is then visible as
+// a changed digest, not as five mysteriously red line assertions.
+report.note('the shell files these anchors belong to (line anchors are only meaningful together with these digests)',
+  "general dsh-client-ui-settings-general 52335B 069c4b91ea0edf41ade5263c4aa7b15b815e2e3424b37151a1647875d2b863ee | models dsh-client-ui-settings-models 186454B 67ebf868e5278f9e260d164b048a8abb320a4de16d63c05b6dad7302071abaa2 | plugins dsh-client-ui-settings-plugins 9739B 9a83a5b1a312ca1fc3ff44cde7b9f3481305ff40f92f74bad7e95af80fdd94aa | presets dsh-client-ui-agent-preset 84237B 71db4d49584d755419c4c68d5f15f19b65bc51363b9f83af693b26dac91a6d55 | runner dsh-cordis-client-runner 350165B f45a85c5175782ba0f6a70e39422e877168759badb6985ba03637d1d3d8e7be4");
+report.deep('general registers order 0', { line: hostOrders.general.sectionLine, order: hostOrders.general.order }, { line: 1168, order: 0 });
+report.deep('models registers order 10', { line: hostOrders.models.sectionLine, order: hostOrders.models.order }, { line: 4062, order: 10 });
+report.deep('plugins registers order 15', { line: hostOrders.plugins.sectionLine, order: hostOrders.plugins.order }, { line: 202, order: 15 });
+report.deep('agent-presets registers order 20', { line: hostOrders.presets.sectionLine, order: hostOrders.presets.order }, { line: 1697, order: 20 });
 report.check(
   'order 16 falls strictly between plugins(15) and agent-presets(20)',
   entry?.order > hostOrders.plugins.order && entry?.order < hostOrders.presets.order,
@@ -898,12 +911,13 @@ report.same('exactly one <h2> on the page', byType(tree, 'h2').length, 1);
 report.check('the intro line is present', text.includes('DSH 向你申请权限时响一次'), text.slice(0, 90));
 report.check('the section carries the plugin data attribute for a browser probe', byType(tree, 'section')[0]?.props?.['data-plugin'] === 'dsh-approval-chime');
 report.same('the bundleRevision badge shows the version id alone (rev-21)', textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev')), diagnostics.revisionId);
-report.check('the revision stamp is the rev-24 one', /rev-24/.test(diagnostics.revision), diagnostics.revision);
+report.check('the revision stamp is the rev-29 one', /rev-29/.test(diagnostics.revision), diagnostics.revision);
 report.check('the badge carries the version id and no prose (rev-21)', /^rev-\d+$/.test(String(textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev')))), String(textOf(byType(tree, 'span').find((node) => node.props.className === 'dacRev'))));
 
 const checkbox = inputsOf(tree, 'checkbox')[0];
-report.same('exactly one enable checkbox', inputsOf(tree, 'checkbox').length, 1);
+report.same('the page carries the two switches rev-25 left it with (enable + native toast)', inputsOf(tree, 'checkbox').length, 2);
 report.same('the checkbox is checked by default', checkbox?.props.checked, true);
+report.same('and the native-toast switch is OFF by default (it needs the registration first)', inputsOf(tree, 'checkbox')[1]?.props.checked, false);
 report.check('the checkbox sits inside a <label> with its text', byType(tree, 'label').some((label) => textOf(label).includes('启用提示音') && label.children.some((child) => child.type === 'input')), JSON.stringify(byType(tree, 'label').map(textOf)));
 
 const range = inputsOf(tree, 'range')[0];

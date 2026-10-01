@@ -57,6 +57,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { homedir, tmpdir } from 'node:os';
@@ -74,6 +75,7 @@ const HOST_ROOT = join(homedir(), 'AppData', 'Local', 'npm-cache', '_npx', '1e7f
 const WEBSERVER_PATH = join(HOST_ROOT, 'dsh-host-webserver', 'lib', 'index.js');
 const HOME_PATHS_PATH = join(HOST_ROOT, 'dsh-home-paths', 'lib', 'index.js');
 const SESSIONS_SLOT = 'conversation.session.header.actions';
+const ENTRY_ID = 'dsh-approval-chime';
 const SESSIONS_ROUTE = '/api/approval-chime/sessions';
 const AUDIO_ROUTE = '/api/approval-chime/audio';
 const NS = 'approval-chime';
@@ -543,7 +545,9 @@ function applyBundle(bundle, options = {}) {
         return () => {};
       },
     },
-    settingsScope: { bind: () => scope },
+    // DSH 0.1.7 removed `settingsScope`; the bundle binds through
+    // `configForms.get(ENTRY_ID)` (same controller shape) — lib/client.js:4351-4355.
+    configForms: { get: (namespace) => (namespace === ENTRY_ID ? scope : null) },
     uiSession: { pendingInteractions: pending },
     locale: { register: () => () => {}, bind: () => (key) => key },
     effect: (fn) => {
@@ -794,7 +798,7 @@ async function main() {
         && bundle.diagnostics.batchGapMs === 180,
       show({ slot: bundle.diagnostics.sessionSlot, action: bundle.diagnostics.sessionAction, gap: bundle.diagnostics.batchGapMs }),
     );
-    check('A5.bundle-contract', bundle.module.name === 'dsh-approval-chime' && eq(bundle.module.inject, ['slots', 'locale', 'settingsScope', 'uiSession']), show({ name: bundle.module.name, inject: bundle.module.inject }));
+    check('A5.bundle-contract', bundle.module.name === 'dsh-approval-chime' && eq(bundle.module.inject, ['slots', 'locale', 'configForms', 'uiSession']), show({ name: bundle.module.name, inject: bundle.module.inject }));
     app.dispose();
   }
 
@@ -1024,13 +1028,32 @@ async function main() {
   /* --------------------------------- D · the effective truth table (audio graph) */
 
   startSection('D · effective value = override ?? global, asserted on the AUDIO GRAPH');
+  /**
+   * A `data:` module cannot resolve bare specifiers, so each one is pinned to its
+   * resolved file URL first. (rev-26 made the host half import its schema package
+   * statically; without this, every mutant run died with ERR_INVALID_URL.)
+   */
+  function pinBareSpecifiers(source) {
+    const resolver = createRequire(pathToFileURL(INDEX_PATH).href);
+    return source.replace(/(from\s+|import\s+)'([^'.\/][^']*)'/g, (match, head, specifier) => {
+      if (specifier.startsWith('node:')) return match;
+      try {
+        const resolved = resolver.resolve(specifier);
+        if (resolved === specifier) return match;
+        return head + "'" + pathToFileURL(resolved).href + "'";
+      } catch {
+        return match;
+      }
+    });
+  }
+
   const tempRoot = join(tmpdir(), `r10-probe18-${process.pid}-${randomUUID()}`);
   mkdirSync(tempRoot, { recursive: true });
   const realHome = join(homedir(), '.dsh');
   const savedHome = process.env.DSH_HOME;
   process.env.DSH_HOME = tempRoot;
   const host = mutatedRun && globalThis.__R10_INDEX_SOURCE__ !== undefined
-    ? await import(`data:text/javascript;base64,${Buffer.from(indexSource, 'utf8').toString('base64')}`)
+    ? await import(`data:text/javascript;base64,${Buffer.from(pinBareSpecifiers(indexSource), 'utf8').toString('base64')}`)
     : await import(pathToFileURL(INDEX_PATH).href);
   const web = makeWebServer();
   host.registerSessionRoutes({
@@ -1594,7 +1617,7 @@ async function main() {
     // (so the badge must render what the bundle reports, whatever that is) and
     // against the expected rev-11 constant (so a stale/forgotten bump still goes
     // red once instead of silently passing).
-    const EXPECTED_REVISION = 'rev-24 · muting draws the slash instead of moving the bell';
+    const EXPECTED_REVISION = 'rev-29 · the desktop runtime and the bound pending hook are observable (the foreground rule is unchanged)';
     check('H6.stats-and-revision', labels.includes('已触发') && labels.includes(bundle.diagnostics.revisionId) && !labels.includes(bundle.diagnostics.revision) && bundle.diagnostics.revision === EXPECTED_REVISION, `revision=${show(bundle.diagnostics.revision)} id=${show(bundle.diagnostics.revisionId)} rendered=${labels.includes(bundle.diagnostics.revisionId)} prose-on-page=${labels.includes(bundle.diagnostics.revision)} expected=${show(EXPECTED_REVISION)}`);
     check('H7.picker-select-css', bundle.styles().includes('::picker(select)') && bundle.styles().includes('appearance:base-select'), 'the @supports (appearance:base-select) block is still injected');
     check('H8.custom-limit-50', clientSource.includes('var CUSTOM_LIMIT = 50;') && labels.includes('导入音频'), 'CUSTOM_LIMIT = 50 at lib/client.js:193, import control rendered');

@@ -71,13 +71,13 @@ const SESSION_SLOT = 'conversation.session.header.actions';
 
 report.group('a. the slot key, the scope namespace and the Host namespace agree');
 
-report.same('the Host half registered exactly one namespace', hostRegistrations.length, 1);
-report.same('the Host namespace', hostRegistrations[0]?.ns, 'approval-chime');
-report.same('the Host namespace equals the module constant', hostRegistrations[0]?.ns, NS);
-report.deep('the Host schema defaults', hostRegistrations[0]?.defaults, { enabled: true, volume: 70, tone: 'chime', custom: [] });
-report.same('the Host registration applies live', hostRegistrations[0]?.options?.applies, 'live');
+report.same('the Host half never calls the DELETED settings.register() (0.1.7 removed it)', hostRegistrations.length, 0);
+report.same('the Host namespace is the profile entry id, published as a module constant', hostHalf.SETTINGS_NS, 'dsh-approval-chime');
+report.same('and the browser-side id keeps its own name', hostHalf.NS, NS);
+report.deep('the Host schema defaults carry the rev-25 switch as well', { ...hostHalf.DEFAULTS }, { enabled: true, volume: 70, tone: 'chime', custom: [], nativeToast: false });
+report.same('the Host declares the schema as a module export instead of registering it', typeof hostHalf.Config, 'function');
 
-report.deep('the browser half bound exactly one settings scope', harness.log.boundSpecs, [{ namespace: NS }]);
+report.deep('the browser half bound exactly one settings form, by profile entry id', harness.log.boundSpecs, ['dsh-approval-chime']);
 report.deep(
   'the browser half waited for the settings.section slot (rev-7) and the session bell slot (rev-10)',
   harness.log.slotInjects,
@@ -87,9 +87,9 @@ report.same('exactly two entries are registered (the section page and the header
 
 const card = harness.log.slotRegistrations[0];
 report.same('the card slot name (rev-7: its own settings.section row, not a keyed card)', card?.entry?.name, SECTION_SLOT);
-report.same('the card id IS the Host settings namespace (the pre-rev-7 `key` field is gone)', card?.entry?.id, hostRegistrations[0]?.ns);
-report.same('the card locale namespace is the same string', card?.entry?.locale, hostRegistrations[0]?.ns);
-report.same('the diagnostics surface reports the same namespace', diagnostics.namespace, hostRegistrations[0]?.ns);
+report.same('the card id is the browser-side id (the settings namespace is the entry id now)', card?.entry?.id, NS);
+report.same('the card locale namespace is the browser-side id too', card?.entry?.locale, NS);
+report.same('the diagnostics surface reports the browser-side settings id', diagnostics.namespace, NS);
 report.same('the diagnostics surface reports the same slot', diagnostics.slot, SECTION_SLOT);
 report.check('the card entry is a function component', typeof card?.component === 'function', typeof card?.component);
 report.same('one locale dictionary was registered under that namespace', harness.log.localeRegistrations[0]?.ns, NS);
@@ -116,7 +116,8 @@ report.same('slider min', Number(slider().props.min), 0);
 report.same('slider max', Number(slider().props.max), 100);
 report.same('slider step', Number(slider().props.step), 1);
 report.same('slider shows the effective setting', Number(slider().props.value), 70);
-report.same('exactly one enable switch', inputsOfType(view.tree, 'checkbox').length, 1);
+report.same('the page carries the two switches rev-25 left it with (enable + native toast)', inputsOfType(view.tree, 'checkbox').length, 2);
+report.same('and the native-toast switch is OFF by default (it needs the registration first)', inputsOfType(view.tree, 'checkbox')[1]?.props?.checked, false);
 report.same('the switch is on by default', switchInput().props.checked, true);
 report.same('exactly one tone picker', elementsOfType(view.tree, 'select').length, 1);
 report.deep('the picker offers the three documented tones', elementsOfType(view.tree, 'option').map((option) => option.props.value), ['chime', 'bell', 'beep']);

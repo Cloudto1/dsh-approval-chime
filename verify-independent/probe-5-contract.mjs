@@ -120,8 +120,8 @@ fileClaim('A.1', '$on declares exactly two parameters and forwards (ctx, event, 
 fileClaim('A.1b', '$on body forwards the caller, event and listener to subscribe()', '@deepseek-ai/dsh-api-gateway', 'lib/client.js', /subscribe\(this\.ctx, event, listener\)/);
 searchClaim('A.1c', 'remote-events subscribe takes no third options argument', '@deepseek-ai/dsh-api-gateway', /subscribe\(callerCtx, event, listener\)/);
 searchClaim('A.3', 'cordis events.ts documents the prepend option', '@deepseek-ai/cordis', /prepend/);
-fileClaim('A.5', 'ui-session exposes pendingInteractions as { getSnapshot, subscribe }', '@deepseek-ai/dsh-client-ui-session', 'lib/client.js', /pendingInteractions = \{\s*$/);
-fileClaim('A.5b', 'its getSnapshot returns the pending snapshot', '@deepseek-ai/dsh-client-ui-session', 'lib/client.js', /getSnapshot: \(\) => this\.pendingSnapshot/);
+fileClaim('A.5', 'ui-session exposes sessionStatus as { getSnapshot, subscribe } (rev-27: the plural member is gone)', '@deepseek-ai/dsh-client-ui-session', 'lib/client.js', /sessionStatus = \{/);
+fileClaim('A.5b', 'its getSnapshot returns the status snapshot', '@deepseek-ai/dsh-client-ui-session', 'lib/client.js', /getSnapshot: \(\) => this\.statusSnapshot/);
 fileClaim('A.5c', 'its subscribe returns a disposer', '@deepseek-ai/dsh-client-ui-session', 'lib/client.js', /subscribe: \(listener\) => \{/);
 fileClaim('A.6', 'the built-in panel tags its interaction kind = "approval"', '@deepseek-ai/dsh-client-ui-approval', 'lib/client.js', /this\.kind = "approval"/);
 fileClaim('A.6b', 'it derives a unique key per approval', '@deepseek-ai/dsh-client-ui-approval', 'lib/client.js', /this\.key = `approval:\$\{String\(nextApprovalKey\)\}`/);
@@ -134,13 +134,13 @@ fileClaim('H3b', 'the snapshot is replaced wholesale only when it really changed
 
 report.group('§B — the settings namespace claim');
 
-fileClaim('B.1', 'the namespace pattern is /^[a-z][a-z0-9-]*$/', '@deepseek-ai/dsh-settings', 'lib/index.js', /const NAMESPACE_PATTERN = \/\^\[a-z\]\[a-z0-9-\]\*\$\/;/);
-fileClaim('B.1b', 'a duplicate namespace is rejected', '@deepseek-ai/dsh-settings', 'lib/index.js', /is already registered/);
-fileClaim('B.2', 'register() takes (ns, schema, options) and returns a scope', '@deepseek-ai/dsh-settings', 'lib/types/index.d.ts', /register<const Namespace extends string, T>\(/);
-fileClaim('B.2b', 'the options type documents applies', '@deepseek-ai/dsh-settings', 'lib/types/index.d.ts', /applies\?: SettingsApplies/);
-fileClaim('B.2c', 'the scope exposes watch/update/replace', '@deepseek-ai/dsh-settings', 'lib/types/index.d.ts', /update\(patch: object\): Promise<void>;/);
-fileClaim('B.2d', 'the scope exposes watch(callback)', '@deepseek-ai/dsh-settings', 'lib/types/index.d.ts', /watch\(callback: \(next: T, prev: T\) => void \| Promise<void>\): \(\) => void;/);
-fileClaim('B.4', 'the resolved value is schema(mergeLayers(base, section))', '@deepseek-ai/dsh-settings', 'lib/index.js', /const value = schema\(mergeLayers\(base, section\)\)/);
+fileClaim('B.1', 'describe() keys every descriptor by its entry id — the namespace IS the plugin entry id now', '@deepseek-ai/dsh-settings', 'lib/index.js', /ns: entry\.options\.id/);   // index.js:432
+fileClaim('B.1b', 'a second settings presentation for one plugin instance is rejected', '@deepseek-ai/dsh-settings', 'lib/index.js', /is already configured/);   // index.js:372
+fileClaim('B.2', 'the service writes through update(ns, patch, expectedRevision?) — register() is gone', '@deepseek-ai/dsh-settings', 'lib/types/index.d.ts', /update\(ns: string, patch: object, expectedRevision\?: number\): Promise<void>;/);   // index.d.ts:102
+fileClaim('B.2b', 'the descriptor type carries the namespace it describes', '@deepseek-ai/dsh-settings', 'lib/types/index.d.ts', /ns: SettingsNamespace;/);   // index.d.ts:9
+fileClaim('B.2c', 'replace() restates a whole section under an optional expected revision', '@deepseek-ai/dsh-settings', 'lib/types/index.d.ts', /replace\(ns: string, section: object, expectedRevision\?: number\): Promise<void>;/);   // index.d.ts:108
+fileClaim('B.2d', 'the conflict the page must survive carries a code and both revisions', '@deepseek-ai/dsh-settings', 'lib/types/index.d.ts', /readonly code = "SETTINGS_CONFLICT";/);   // index.d.ts:33
+fileClaim('B.4', 'the resolved value is the schema value unwrapped from its volatile node', '@deepseek-ai/dsh-settings', 'lib/index.js', /plainConfig\(value\.get\(\)\)/);   // index.js:98
 fileClaim('B.4b', 'describe() serializes the schema with toJSON()', '@deepseek-ai/dsh-settings', 'lib/index.js', /\.toJSON\(\)/);
 fileClaim('H11', 'the client decode requires a plain object value (no scalars, no arrays)', '@deepseek-ai/dsh-client-ui-settings', 'lib/client.js', /if \(typeof view\.value !== "object" \|\| view\.value === null \|\| Array\.isArray\(view\.value\)\) return void 0;/);
 fileClaim('H12', 'persistence is host only on loopback', '@deepseek-ai/dsh-client-ui-settings', 'lib/client.js', /isLoopback \? "host" : "memory"/);
@@ -149,21 +149,21 @@ fileClaim('H12', 'persistence is host only on loopback', '@deepseek-ai/dsh-clien
 
 report.group('§C — the settings card claim');
 
-fileClaim('C.1', 'the slot contract keys settings.plugin.item by namespace', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/types/client/slot-contract.d.ts', /'settings\.plugin\.item': \{/);
-fileClaim('C.2', 'the shipped cards register through slots.inject + slots.register', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /ctx\.slots\.inject\("settings\.plugin\.item"/);
-fileClaim('C.2b', 'the shipped cards pass name/key/locale', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /name: "settings\.plugin\.item",/);
-fileClaim('C.2c', 'the card entry carries the namespace as key', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /key: SHELL_NS,/);
+fileClaim('C.1', 'the shipped cards read the plugins tab slot by name', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /ctx\.slots\.getVersion\("settings\.plugins\.tab"\)/);   // client.js:178
+fileClaim('C.2', 'the shipped cards declare the slots+locale inject pair', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /const inject = \["slots", "locale"\];/);   // client.js:162
+fileClaim('C.2b', 'the tab entries carry id/order/label read from the slot options', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /id: entry\.options\.id \?\? ""/);   // client.js:185
+fileClaim('C.2c', 'and their label resolves through the slots helper', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /resolveSlotLabel\)\(entry\.options\.label\)/);   // client.js:187
 fileClaim('C.1b', 'the settings-plugins bundle exports only apply/inject', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /exports\.inject = inject;/);
-fileClaim('C.3', 'the tab dispatches only namespaces the Host serves', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /served\.has\(entry\.options\.key\)/);
-fileClaim('C.4', 'a card is available when the scope snapshot is ready', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /available: snapshot\.status === "ready",/);
+fileClaim('C.3', 'the tab list subscribes to the slot ledger and to the locale', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /ctx\.slots\.subscribe\("settings\.plugins\.tab", listener\)/);   // client.js:196
+fileClaim('C.4', 'and the tabs are ordered by their declared order', '@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js', /\.sort\(\(a, b\) => a\.order - b\.order\)/);   // client.js:188
 fileClaim('C.4d', 'the platform scope set() delegates to the queueing mutate()', '@deepseek-ai/dsh-client-ui-settings', 'lib/client.js', /set\(field, value\) \{\s*$/);
 fileClaim('C.4e', 'platform writes are serialized and thread the pending revision', '@deepseek-ai/dsh-client-ui-settings', 'lib/client.js', /const revision = expectedRevision \?\? this\.pendingRevision \?\? this\.getSnapshot\(\)\.revision;/);
 fileClaim('C.4f', 'a refused (fenced) platform write recovers instead of rejecting', '@deepseek-ai/dsh-client-ui-settings', 'lib/client.js', /if \(!response\.ok\) \{\s*$/);
-fileClaim('H7', 'the client-side service is literally named settingsScope', '@deepseek-ai/dsh-client-ui-settings', 'lib/client.js', /"settingsScope"/);
-fileClaim('H7b', 'the settings scope binder keys on spec.namespace', '@deepseek-ai/dsh-client-ui-settings', 'lib/client.js', /`ui-settings: \$\{spec\.namespace\} settings scope`/);
+fileClaim('H7', 'the client-side service is literally named configForms (it was settingsScope)', '@deepseek-ai/dsh-client-ui-settings', 'lib/client.js', /"configForms"/);   // client.js:1284
+fileClaim('H7b', 'the settings form controller is bound by { namespace: entryId }', '@deepseek-ai/dsh-client-ui-settings', 'lib/client.js', /new ConfigFormController\(this\.owner, \{ namespace: entryId \}/);   // client.js:1312
 fileClaim('H7c', 'the locale service is provided under the name "locale"', '@deepseek-ai/dsh-client-locale', 'lib/client.js', /ctx\.provide\("locale", locale\)/);
 fileClaim('H7d', 'the locale API exposes register(ns, dicts) returning a disposer', '@deepseek-ai/dsh-client-locale', 'lib/client.js', /register\(ns, localeOrDicts, dict\) \{/);
-fileClaim('H7e', 'the locale plugin itself binds a scope by { namespace }', '@deepseek-ai/dsh-client-locale', 'lib/client.js', /ctx\.settingsScope\.bind\(\{ namespace: LOCALE_SETTINGS_NAMESPACE \}\)/);
+fileClaim('H7e', 'the locale plugin itself binds its form through ctx.configForms.get(namespace)', '@deepseek-ai/dsh-client-locale', 'lib/client.js', /ctx\.configForms\.get\(LOCALE_SETTINGS_NAMESPACE\)/);   // locale/client.js:1517
 fileClaim('H7f', 'the slots service is provided under the name "slots"', '@deepseek-ai/dsh-client-ui-renderer', 'lib/client.js', /super\(ctx, "slots"\)/);
 fileClaim('H7g', 'the uiSession service is provided under the name "uiSession"', '@deepseek-ai/dsh-client-ui-session', 'lib/client.js', /super\(ctx, "uiSession"\)/);
 
@@ -188,11 +188,11 @@ fileClaim('D.4', 'the manifest declares dsh.client.platform, and the Web consume
 fileClaim('D.4b', 'the client manifest interface carries platform/inject/external', '@deepseek-ai/dsh-package-manifest', 'lib/types/types.d.ts', /export interface DshClientManifest \{/);
 fileClaim('E.1', 'dsh-app-boot sets ctx.baseUrl to the profile directory URL', '@deepseek-ai/dsh-app-boot', 'lib/index.js', /ctx\.baseUrl = pathToFileURL\(dirname\(absoluteConfigPath\)\)\.href/);
 fileClaimNormalized('E.1b', 'a bundle name resolves first from the dsh installation, then the profile', '@deepseek-ai/dsh-app-boot', 'lib/index.js', /a bundle name resolves first from the dsh installation \(the launcher's own package\), then from the profile directory\./);
-fileClaimNormalized('E.2', 'patch layers are merged into one array and applied in a single update', '@deepseek-ai/cordis-plugin-include', 'src/index.ts', /const data = this\.applyPatches\(this\.data!, config\.patches\) await this\.root\.update\(data\)/);
-searchClaim('E.2b', 'a duplicate loader entry id throws', '@deepseek-ai/cordis-plugin-loader', /duplicate loader entry id/);
-fileClaim('E.3', 'the Host maintains $DSH_HOME/profiles/node_modules as a self-healing fallback', '@deepseek-ai/dsh-app-boot', 'lib/index.js', /healProfilesModuleFallback\(options\)/);
-fileClaimNormalized('E.3b', 'the fallback is described as mirroring the installation dependency closure', '@deepseek-ai/dsh-app-boot', 'lib/index.js', /mirrors the dsh installation dependency closure/);
-fileClaim('E.3c', 'the fallback writer creates symlinks per package name', '@deepseek-ai/dsh-app-boot', 'lib/index.js', /else ensureSymlink\(link, entry\.packageDir\);/);
+fileClaimNormalized('E.2', 'the Host documents the patch semantics shared by mounting and offline tooling', '@deepseek-ai/dsh-app-boot', 'lib/index.js', /THE patch semantics of this include/);   // index.js:48
+searchClaim('E.2b', 'a patch that matches nothing warns and is skipped, instead of silently matching', '@deepseek-ai/dsh-app-boot', /A patch that matches nothing warns and is skipped/);   // index.js:55
+fileClaim('E.3', 'the Host keeps a link-projection fallback directory inside the profile', '@deepseek-ai/dsh-app-boot', 'lib/index.js', /LINK_PROJECTION_DIR = "\.dsh-module-fallback"/);   // index.js:593
+fileClaimNormalized('E.3b', 'the fallback removes only symlinks it owns, never pnpm-installed packages', '@deepseek-ai/dsh-app-boot', 'lib/index.js', /Only symlinks under the profile's .node_modules. whose target lies inside/);   // index.js:596
+fileClaim('E.3c', 'and a profile without that directory is left untouched', '@deepseek-ai/dsh-app-boot', 'lib/index.js', /A profile without the directory is untouched/);   // index.js:598
 
 /* ------------------------------- the shipped implementation against those claims */
 
@@ -201,22 +201,22 @@ report.group('the shipped lib/*.js uses exactly those APIs');
 const implementationTokens = [
   ['A.5', 'the browser half reads ctx.uiSession', CLIENT_SOURCE, /ctx\.uiSession/],
   ['A.5', 'it targets .pendingInteractions', CLIENT_SOURCE, /service\.pendingInteractions|pendingInteractions/],
-  ['A.5', 'it calls getSnapshot() on that source', CLIENT_SOURCE, /source\.getSnapshot\(\)/],
-  ['A.5', 'it subscribes to that source', CLIENT_SOURCE, /source\.subscribe\(/],
+  ['A.5', 'it calls getSnapshot() on that source through the observable adapter', CLIENT_SOURCE, /source\.observable\.getSnapshot\(\)/],   // client.js:2160
+  ['A.5', 'it subscribes to that source through the same adapter', CLIENT_SOURCE, /source\.observable\.subscribe\(/],   // client.js:2526
   ['A.6', 'it discriminates on kind === \x27approval\x27', CLIENT_SOURCE, /interaction\.kind !== 'approval'/],
   ['A.6b', 'it dedupes on the interaction key', CLIENT_SOURCE, /interaction\.key/],
   ['C.2', 'it registers under the settings.section slot (rev-7 moved it off settings.plugin.item)', CLIENT_SOURCE, /ctx\.slots\.inject\('settings\.section',/],
   ['C.2b', 'the entry id is the settings namespace (rev-7 replaced the keyed-card `key`)', CLIENT_SOURCE, /id: 'approval-chime',/],
   ['C.4', 'availability follows scope status ready', CLIENT_SOURCE, /status === 'ready'/],
-  ['B.2', 'the browser half binds its scope by namespace', CLIENT_SOURCE, /ctx\.settingsScope\.bind\(\{ namespace: NS \}\)/],
+  ['B.2', 'the browser half binds its form through ctx.configForms.get()', CLIENT_SOURCE, /configForms\.get\(/],   // client.js:146
   ['C.4b', 'writes go through the fenced scope api', CLIENT_SOURCE, /scope\.set\(field, value\)/],
   ['C.4c', 'resetting goes through the unset api', CLIENT_SOURCE, /scope\.unset\(field\)/],
   ['A.1', 'the browser half never names the approval event', CLIENT_SOURCE, /approval\/request/],
   ['A.1', 'the browser half never subscribes through the remote API', CLIENT_SOURCE, /\$on/],
   ['B.1', 'the Host half registers the documented namespace constant', HOST_SOURCE, /export const NS = 'approval-chime';/],
-  ['B.2', 'the Host half registers with applies: live', HOST_SOURCE, /settings\.register\(NS, schema, \{ applies: 'live' \}\)/],
-  ['B.6', 'the Host half resolves schemastery lazily through createRequire', HOST_SOURCE, /createRequire\(anchor\)\.resolve\(SCHEMA_PACKAGE\)/],
-  ['B.6', 'it has no static schemastery import', HOST_SOURCE, /^import\s+[^;]*schemastery/m],
+  ['B.2', 'the Host half publishes its namespace as a module constant instead of registering it', HOST_SOURCE, /^export const SETTINGS_NS = 'dsh-approval-chime';$/m],   // index.js:68
+  ['B.6', 'the Host half imports the schema package STATICALLY (rev-26 dropped the lazy createRequire)', HOST_SOURCE, /^import z from '@deepseek-ai\/schemastery';$/m],   // index.js:52
+  ['B.6', 'and builds the shipped form with z.object — the shape describe() serves', HOST_SOURCE, /return z\.object\(\{/],   // index.js:260
 ];
 for (const [id, text, source, pattern] of implementationTokens) {
   const hit = firstMatch(source, pattern);
@@ -230,21 +230,27 @@ report.note('host file under test', 'lib/index.js');
 report.note('browser file under test', 'lib/client.js');
 report.check('the card key literal in the browser half is the Host namespace', CLIENT_SOURCE.includes("var NS = 'approval-chime';"), 'var NS = \'approval-chime\';');
 
-/* ------------------------- precedent: a third-party bundle already mounted on this machine */
+/* ------------------------- precedent: a REAL shipped bundle uses the same API pair */
+/* rev-24 pointed this at a third-party bundle mounted on the web profile
+ * (`dsh-quorum-panel`). That package is gone from this machine, and the two
+ * third-party bundles that ARE mounted (`dsh-whale-widget`, `dshmarket`) ship no
+ * `lib/client.js`. The precedent is therefore taken from the bundle every DSH
+ * installation ships — the plugins settings card — which is a real bundle using the
+ * same slots+locale pair. */
 
-report.group('precedent: an already-mounted third-party bundle uses the same API pair');
+report.group('precedent: a real shipped bundle uses the same API pair');
 
-const precedent = join(DSH_HOME, 'profiles', 'web', 'node_modules', 'dsh-quorum-panel', 'lib', 'client.js');
-if (!existsSync(precedent)) {
-  report.check('a mounted workspace plugin is available as a precedent', false, `not found: ${precedent}`);
+const precedentPath = fileIn('@deepseek-ai/dsh-client-ui-settings-plugins', 'lib/client.js');
+if (precedentPath === null || !existsSync(precedentPath)) {
+  report.check('a real shipped bundle is available as a precedent', false, `not found: ${String(precedentPath)}`);
 } else {
-  const source = readFileSync(precedent, 'utf8');
-  const injectList = firstMatch(source, /var inject = \[[^\]]*\]/);
-  const localeRegister = firstMatch(source, /ctx\.locale\.register\(NS, DICT\)/);
-  const slotInject = firstMatch(source, /ctx\.slots\.inject\('shell\.overlay', function \(\) \{/);
-  report.check('the mounted bundle injects the same slots/locale service pair', injectList !== null && injectList.text.includes("'slots'") && injectList.text.includes("'locale'"), injectList === null ? 'no inject array' : `${precedent.slice(0, 60)}…:${injectList.line} → ${injectList.text}`);
-  report.check('it registers its dictionary the same way', localeRegister !== null, localeRegister === null ? 'no ctx.locale.register(NS, DICT)' : `line ${localeRegister.line}: ${localeRegister.text}`);
-  report.check('it waits for its slot before registering, like this plugin', slotInject !== null, slotInject === null ? 'no ctx.slots.inject(...)' : `line ${slotInject.line}: ${slotInject.text}`);
+  const source = readFileSync(precedentPath, 'utf8');
+  const injectList = firstMatch(source, /const inject = \[[^\]]*\]/);
+  const localeRegister = firstMatch(source, /ctx\.locale\.register\(NS, \{/);
+  const slotRead = firstMatch(source, /ctx\.slots\.getVersion\("settings\.plugins\.tab"\)/);
+  report.check('the mounted bundle injects the same slots/locale service pair', injectList !== null && injectList.text.includes('"slots"') && injectList.text.includes('"locale"'), injectList === null ? 'no inject array' : `${precedentPath.slice(0, 60)}…:${injectList.line} → ${injectList.text}`);
+  report.check('it registers its dictionary the same way', localeRegister !== null, localeRegister === null ? 'no ctx.locale.register(NS, {...})' : `line ${localeRegister.line}: ${localeRegister.text}`);
+  report.check('it reads its slot before registering, like this plugin', slotRead !== null, slotRead === null ? 'no ctx.slots.getVersion(...)' : `line ${slotRead.line}: ${slotRead.text}`);
 }
 
 report.done();

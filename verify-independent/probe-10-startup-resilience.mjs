@@ -273,7 +273,7 @@ shape(
   {},
 );
 shape(
-  'ctx.settings.register throws',
+  'ctx.settings.register throws (the Host half never calls it — rev-26)',
   (lines) => ({
     ctx: {
       logger: loggerInto(lines),
@@ -288,10 +288,10 @@ shape(
     },
     routes: [],
   }),
-  { routes: 0, warnIncludes: 'settings namespace' },
+        { routes: 0, warnIncludes: 'web server unavailable' },   // the settings service is not consulted at all
 );
 shape(
-  'ctx.settings.describe throws',
+  'ctx.settings.describe throws (the Host half never reads it — rev-26)',
   (lines) => ({
     ctx: {
       logger: loggerInto(lines),
@@ -306,7 +306,7 @@ shape(
     },
     routes: [],
   }),
-  { routes: 0, warnIncludes: 'settings directory unreadable' },
+        { routes: 0, warnIncludes: 'web server unavailable' },   // ditto
 );
 
 log.section('6. the positive control and the deferred-effect caveat');

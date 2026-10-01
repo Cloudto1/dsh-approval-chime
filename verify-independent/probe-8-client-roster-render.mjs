@@ -49,9 +49,11 @@ log.note(`lib/client.js sha256 ${sha256(CLIENT_HALF)}`);
 
 log.section('1. tone/custom schema: the widening really is a closed set');
 
-const loaded = plugin.loadSchemastery({});
-log.check('a real @deepseek-ai/schemastery was loaded', typeof loaded.z === 'function', `mode=${loaded.mode} path=${loaded.path}`);
-const schema = plugin.buildSchema(loaded.z);
+// rev-26 removed loadSchemastery/buildSchema: the shipped schema is the module-level
+// `Config`, and `configReader(...).get()` both validates and resolves it.
+const loaded = { available: typeof plugin.Config === 'function', reader: plugin.configReader };
+log.check('the shipped Config is the schema the Host serves (rev-26 surface)', loaded.available === true && typeof loaded.reader === 'function', `available=${String(loaded.available)}`);
+const schema = (value) => plugin.configReader(plugin.Config(value)).get();
 const validate = (value) => {
   try {
     return { ok: true, value: schema(value) };
@@ -106,7 +108,7 @@ for (const [label, input] of reject) {
   log.check(`refuses ${label}`, result.ok === false, result.ok ? `ACCEPTED as ${JSON.stringify(result.value)}` : result.error.split('\n')[0]);
 }
 
-log.deepEqual('the empty document yields the documented defaults', validate({}).value, { enabled: true, volume: 70, tone: 'chime', custom: [] });
+log.deepEqual('the empty document yields the documented defaults (rev-25 added the native-toast switch)', validate({}).value, { enabled: true, volume: 70, tone: 'chime', custom: [], nativeToast: false });
 const nameless = validate({ custom: [{ id: ID_A }] });
 log.check('a roster entry WITHOUT a name is accepted and the name field is dropped', nameless.ok === true && nameless.value.custom[0].name === undefined, JSON.stringify(nameless.ok ? nameless.value.custom : nameless.error));
 log.note('so the documented "custom: [{id,name}]" is really "{id, name?}": the browser half substitutes the id for a missing name (see the roster section)');
@@ -145,7 +147,7 @@ const harness = createClientHarness(sandbox, { scope });
 harness.apply();
 const diagnostics = harness.diagnostics;
 log.check('diagnostics surface installed', diagnostics !== null && typeof diagnostics === 'object');
-log.check('revision stamp names the revision under test (rev-24)', String(diagnostics.revision).includes('rev-24'), String(diagnostics.revision));
+log.check('revision stamp names the revision under test (rev-29)', String(diagnostics.revision).includes('rev-29'), String(diagnostics.revision));
 log.equal('diagnostics.toneRows', diagnostics.toneRows, 3);
 log.equal('diagnostics.customPrefix', diagnostics.customPrefix, 'custom:');
 log.deepEqual('master gain is unchanged by rev-4', diagnostics.masterGain, 0.6);

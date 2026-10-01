@@ -85,48 +85,67 @@ if (existsSync(junction) && existsSync(mirror)) {
   report.ok('junction resolves to the host-maintained copy', same, detail);
 }
 
-/* ------------------------------------------------- 3. schema resolution API */
+/* ------------------------------- 3. the settings schema is a static import */
 
-report.section('schema resolution');
-const anchors = plugin.schemaAnchors({ baseUrl: `file:///${join(homedir(), '.dsh', 'profiles', 'web').replace(/\\/g, '/')}/` });
-report.ok('anchors include this package first (the junction anchor)', anchors[0]?.startsWith('file://') === true, anchors[0]);
-report.ok('anchors include the profile directory from ctx.baseUrl', anchors.some((anchor) => anchor.includes('/profiles/web/package.json')), anchors.join(' '));
-const loaded = plugin.loadSchemastery({});
-report.ok('schemastery loads through the shipped junction', loaded.z !== null && loaded.mode === 'require', `${loaded.mode} from ${loaded.path}`);
-const candidates = plugin.schemaCandidates({});
-report.equal(
-  'the resolving anchor is this package (the junction), not the profile',
-  candidates.candidates[0]?.anchor,
-  new URL('../lib/index.js', import.meta.url).href,
+report.section('the settings schema is a module-level static import (DSH 0.1.7 model)');
+const hostSource = readText(HOST_PATH);
+const topLevelImports = hostSource.split(/\r?\n/).filter((line) => /^import\s/.test(line));
+const schemaImportLines = topLevelImports.filter((line) => line.includes('schemastery'));
+report.ok(
+  'lib/index.js statically imports schemastery at the top level — the new model REQUIRES this',
+  schemaImportLines.length === 1 && /^import z from '@deepseek-ai\/schemastery';$/.test(schemaImportLines[0]),
+  "import z from '@deepseek-ai/schemastery';",
 );
-report.ok('the resolved file is a real schemastery build', typeof loaded.path === 'string' && loaded.path.includes('schemastery'), String(loaded.path));
-report.ok('no resolution failure was recorded', loaded.failures.length === 0, loaded.failures.join(' | '));
-const loadedAsync = await plugin.loadSchemasteryAsync({});
-report.ok('the async route agrees', loadedAsync.z !== null, `${loadedAsync.mode} from ${loadedAsync.path}`);
+const lazyResolverExports = ['schemaAnchors', 'schemaCandidates', 'loadSchemastery', 'loadSchemasteryAsync'].filter(
+  (name) => typeof plugin[name] === 'function',
+);
+report.ok(
+  'the lazy resolver is gone (no schemaAnchors/schemaCandidates/loadSchemastery export remains)',
+  lazyResolverExports.length === 0 && typeof plugin.buildSchema === 'function',
+  'buildSchema',
+);
+const schema = plugin.Config;
+report.ok(
+  'the form is exported ready-made as Config — no runtime resolution is needed to obtain it',
+  schema?.type === 'object' && typeof schema.toJSON === 'function',
+  `type=${schema?.type} toJSON=${typeof schema?.toJSON}`,
+);
 
-/* ------------------------------------------------------ 4. registration call */
+/* ------------------------------------------ 4. the Config form and defaults */
 
-report.section('apply() registers the namespace');
-const schema = plugin.buildSchema(loaded.z);
+report.section('the Config form resolves the documented defaults');
+// Every field of the rev-26/28 form is `.volatile()`, so a parsed field is a live
+// REFERENCE rather than a raw value (`lib/index.js` says why: a volatile-only edit
+// is committed into the running fiber instead of re-applying the plugin, so a
+// cached value would go stale). `configReader` is the product's OWN unwrapper and
+// is what the native-toast bridge consumes, so these assertions read the form the
+// same way the product does — not by unwrapping it themselves.
+const read = (section) => plugin.configReader(schema(section)).get();
 report.equal('schema.type is object (the client decode requires an object value)', schema.type, 'object');
 report.ok('schema exposes toJSON() for describe()/redactSecrets()', typeof schema.toJSON === 'function');
-const defaults = schema({});
-report.deepEqual('schema defaults', defaults, { enabled: true, volume: 70, tone: 'chime', custom: [] });
+const defaults = read({});
+report.deepEqual('schema defaults', defaults, { enabled: true, volume: 70, tone: 'chime', custom: [], nativeToast: false });
 report.deepEqual('exported DEFAULTS match the schema', { ...plugin.DEFAULTS }, defaults);
 report.deepEqual('exported TONES match the schema', [...plugin.TONES], ['chime', 'bell', 'beep']);
-report.deepEqual('a partial user section fills the defaults', schema({ volume: 33 }), { enabled: true, volume: 33, tone: 'chime', custom: [] });
+report.deepEqual('a partial user section fills the defaults', read({ volume: 33 }), {
+  enabled: true,
+  volume: 33,
+  tone: 'chime',
+  custom: [],
+  nativeToast: false,
+});
 report.equal('volume=200 is rejected', validationError(() => schema({ volume: 200 })), '$.volume expected number <= 100 but got 200');
 report.equal('volume=-1 is rejected', validationError(() => schema({ volume: -1 })), '$.volume expected number >= 0 but got -1');
 report.ok('tone="nope" is rejected', validationError(() => schema({ tone: 'nope' })) !== null, 'a bare string is still not a legal tone');
 report.equal(
   'tone="custom:<uuid>" is accepted (the imported-audio case)',
-  schema({ tone: 'custom:3f2504e0-4f89-41d3-9a0c-0305e82c3301' }).tone,
+  read({ tone: 'custom:3f2504e0-4f89-41d3-9a0c-0305e82c3301' }).tone,
   'custom:3f2504e0-4f89-41d3-9a0c-0305e82c3301',
 );
 report.ok('a malformed custom tone is rejected', validationError(() => schema({ tone: 'custom:nope' })) !== null, 'only a real uuid passes the pattern');
 report.deepEqual(
   'the imported roster round-trips in order',
-  schema({
+  read({
     custom: [
       { id: '11111111-2222-4333-8444-555555555555', name: 'first.mp3' },
       { id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', name: 'second.wav' },
@@ -151,48 +170,95 @@ report.equal('enabled="yes" is rejected', validationError(() => schema({ enabled
 report.equal('namespace matches the dsh-settings pattern', /^[a-z][a-z0-9-]*$/.test(plugin.NS), true);
 report.equal('host half injects only the settings service', JSON.stringify(plugin.inject), JSON.stringify(['settings']));
 
-const registrations = [];
+/* ------------------------------------------- 5. the settings page policy */
+
+report.section('apply() declares the settings page policy instead of registering a namespace');
+// `settings.register()` was DELETED by the rev-26 settings migration. The entry is
+// now described by its module-level `Config` and the bundle only declares a page
+// POLICY; a stub that records the deleted call is how this suite proves it is gone.
+const legacyRegistrations = [];
+const policyCalls = [];
+const fakeFiber = { id: 'fake-fiber' };
 const fakeCtx = {
+  fiber: fakeFiber,
+  effect: (callback) => callback(),
+  get: () => undefined,
   logger: { info() {}, warn() {}, error() {}, debug() {} },
   settings: {
     describe: () => [],
     register(ns, receivedSchema, options) {
-      registrations.push({ ns, schema: receivedSchema, options });
+      legacyRegistrations.push({ ns, schema: receivedSchema, options });
       return { get: () => ({}), watch: () => () => {}, update: () => {}, replace: () => {} };
+    },
+    configure(presentation, owner) {
+      policyCalls.push({ presentation, owner });
+      return () => {};
     },
   },
 };
 plugin.apply(fakeCtx);
-report.equal('exactly one namespace was registered', registrations.length, 1);
-report.equal('registered namespace', registrations[0]?.ns, plugin.NS);
-report.equal('registered namespace is the card key namespace', registrations[0]?.ns, 'approval-chime');
-report.ok('registered schema is a real schemastery object', registrations[0]?.schema?.type === 'object' && typeof registrations[0]?.schema?.toJSON === 'function');
-report.ok('registered schema exposes the schema envelope describe() needs', Object.keys(registrations[0]?.schema?.toJSON() ?? {}).includes('refs'));
-report.equal('registration applies live', registrations[0]?.options?.applies, 'live');
-report.deepEqual('registered schema resolves the documented defaults', registrations[0]?.schema({}), { enabled: true, volume: 70, tone: 'chime', custom: [] });
+report.equal('apply() never calls the DELETED settings.register()', legacyRegistrations[0]?.ns ?? null, null);
+report.equal('the settings namespace is the profile entry id, not a self-chosen namespace', plugin.SETTINGS_NS, 'dsh-approval-chime');
+report.equal('the locale namespace keeps its own value', plugin.NS, 'approval-chime');
+report.ok('registered schema is a real schemastery object', schema?.type === 'object' && typeof schema?.toJSON === 'function');
+report.ok('registered schema exposes the schema envelope describe() needs', Object.keys(schema?.toJSON() ?? {}).includes('refs'));
+report.deepEqual('the form declares exactly the five documented fields', Object.keys(plugin.Config.dict ?? {}), [
+  'enabled',
+  'volume',
+  'tone',
+  'custom',
+  'nativeToast',
+]);
+report.equal('apply() declares its page policy', policyCalls.length, 1);
+report.deepEqual('and suppresses the auto-generated page (auto: false)', policyCalls[0]?.presentation, { auto: false });
+report.deepEqual('the policy is owned by THIS entry fiber, not the settings service fiber', policyCalls[0]?.owner, { id: 'fake-fiber' });
 
-/* ------------------------------------------------------------ 5. idempotency */
+/* ------------------------------------------------------------ 6. idempotency */
 
 report.section('apply() is idempotent and never throws');
-const secondRegistrations = [];
+const secondLegacy = [];
+const secondPolicies = [];
 plugin.apply({
-  logger: { info() {}, warn() {}, error() {}, debug() {} },
+  fiber: { id: 'second-fiber' },
+  effect: (callback) => callback(),
+  get: () => undefined,
+  logger: quietLogger([]),
   settings: {
-    describe: () => [{ ns: 'approval-chime', schema: {}, value: {} }, { ns: 'ui-background' }],
+    describe: () => [{ ns: 'dsh-approval-chime', schema: {}, value: {} }],
     register() {
-      secondRegistrations.push('called');
+      secondLegacy.push('called');
+    },
+    configure(presentation, owner) {
+      secondPolicies.push({ presentation, owner });
+      return () => {};
     },
   },
 });
-report.equal('an already-registered namespace is not registered twice', secondRegistrations.length, 0);
+report.equal('a second apply() still never calls the deleted settings.register()', secondLegacy[0] ?? null, null);
+report.equal('and declares its page policy again (idempotent, disposer-owned)', secondPolicies.length, 1);
 
 const calls = [];
+// Four degraded contexts, all of which must be tolerated. Their warnings are
+// collected into ONE array: the two assertions below pin the exact set (a missing
+// settings service must be REPORTED, and a throwing configure() must be reported
+// without escaping).
 const tolerated = [
-  ['no context at all', undefined],
   ['empty context', { logger: quietLogger(calls) }],
   ['settings: null', { logger: quietLogger(calls), settings: null }],
-  ['settings without register()', { logger: quietLogger(calls), settings: { describe: () => [] } }],
-  ['describe() throws', { logger: quietLogger(calls), settings: { describe: () => { throw new Error('directory exploded'); }, register: () => {} } }],
+  ['settings without configure()', { logger: quietLogger(calls), settings: { describe: () => [] } }],
+  [
+    'configure() throws',
+    {
+      effect: (callback) => callback(),
+      logger: quietLogger(calls),
+      settings: {
+        describe: () => [],
+        configure() {
+          throw new Error('policy exploded');
+        },
+      },
+    },
+  ],
 ];
 let threw = null;
 for (const [label, ctx] of tolerated) {
@@ -203,52 +269,95 @@ for (const [label, ctx] of tolerated) {
   }
 }
 report.check('apply() survives missing/broken services', threw === null, threw ?? '');
-report.ok('describe() failure is reported, not swallowed silently', calls.some((line) => line.includes('directory unreadable')), calls.join(' | '));
+report.ok(
+  'a missing settings service is reported, not swallowed silently',
+  calls.some((line) => line.includes('settings service unavailable')),
+  calls.join(' | '),
+);
+report.ok(
+  'a throwing configure() is reported too',
+  calls.some((line) => line.includes('settings page policy could not be registered: policy exploded')),
+  calls.join(' | '),
+);
+report.check('a throwing configure() does not escape apply()', threw === null, threw ?? '');
 
-const registerFailure = [];
-let registerThrew = null;
+// A policy the settings service REFUSES (its own duplicate guard) while every route
+// is claimable: the observable contract is "report it, claim all three routes anyway".
+const claimed = [];
+const refuseLogs = [];
+const refused = [];
 try {
   plugin.apply({
-    logger: quietLogger(registerFailure),
+    effect: (callback) => callback(),
+    get: (name) => (name === 'webServer' ? { register: (route) => { claimed.push(route); return () => {}; } } : undefined),
+    logger: {
+      info: (line) => refuseLogs.push(`info: ${String(line)}`),
+      warn: (line) => refuseLogs.push(`warn: ${String(line)}`),
+      error: () => {},
+      debug: () => {},
+    },
     settings: {
       describe: () => [],
-      register() {
-        throw new Error('settings namespace "approval-chime" is already registered');
+      configure() {
+        throw new Error('settings namespace "dsh-approval-chime" page policy is already registered');
       },
     },
   });
 } catch (error) {
-  registerThrew = error.message;
+  refused.push(error.message);
 }
-report.check('a throwing register() does not escape apply()', registerThrew === null, registerThrew ?? '');
-report.ok('a throwing register() is reported', registerFailure.some((line) => line.includes('registration failed')), registerFailure.join(' | '));
-
-/* ------------------------------------------- 6. static independence + degrade */
-
-report.section('an unreachable schema package degrades instead of breaking the boot');
-const hostSource = readText(HOST_PATH);
-const topLevelImports = hostSource.split('\n').filter((line) => /^import\s/.test(line));
-report.deepEqual(
-  'every top-level import is a node: builtin',
-  topLevelImports.every((line) => /^import\s+.*from\s+'node:[a-z/]+';/.test(line)),
-  true,
+report.ok(
+  'a throwing configure() is reported',
+  refuseLogs.some((line) => line.includes('page policy is already registered')),
+  refuseLogs.join(' | '),
 );
-report.ok('no static import of the schema package', !/^import\s+[^;]*schemastery/m.test(hostSource));
+// The native-toast route is claimed by an ASYNC registration (its bridge module is
+// imported on demand), so the route count is only meaningful after a turn of the
+// loop — while the warning detail asserted just above is deliberately the snapshot
+// taken BEFORE it lands, because those three lines are the degraded-boot evidence.
+await new Promise((resolve) => setTimeout(resolve, 50));
+report.equal('and a broken settings policy still leaves every route claimed', claimed.length, 3);
 
+/* ------------------------------- 7. the static import is REQUIRED, not optional */
+
+report.section('the static schema import is REQUIRED — the old degrade-and-load property is deliberately gone');
+const schemaImports = topLevelImports.filter((line) => line.includes('schemastery'));
+report.equal('exactly one top-level import is the schema package (the new model requires it)', schemaImports.length, 1);
+const otherImports = topLevelImports.filter((line) => !line.includes('schemastery'));
+report.ok(
+  'every other top-level import is STILL a node: builtin',
+  otherImports.every((line) => /^import\s+.*from\s+'node:[a-z/]+';$/.test(line)),
+  otherImports.join('\n | '),
+);
+report.ok(
+  'the schema package IS statically imported — this is exactly what DSH 0.1.7 requires',
+  /^import z from '@deepseek-ai\/schemastery';$/m.test(hostSource),
+  "import z from '@deepseek-ai/schemastery';",
+);
+
+// KNOWN ROBUSTNESS REGRESSION, kept as an assertion on purpose: through rev-24 the
+// Host half resolved schemastery lazily and degraded to an inert plugin when the
+// package was unreachable. The 0.1.7 settings model needs `Config` at IMPORT time,
+// so a copy outside the package now fails to load AT ALL. That is the accepted
+// price of the entry actually being describable; pretending otherwise would be the
+// dishonest option.
 let degraded = null;
 try {
   degraded = runDegradedHostChild(hostSource);
   if (degraded.verdict === null || !degraded.ok) {
     report.skip('degraded host child process', `child exited with status ${String(degraded.status)}`);
   } else {
-    report.ok('the copy outside the package still loads', degraded.verdict.threw === false, String(degraded.verdict.error));
-    report.equal('nothing is registered when the schema is unreachable', degraded.verdict.registrations, 0);
     report.ok(
-      'the degradation is reported through the logger',
-      degraded.verdict.warnings.some((line) => line.includes('not resolvable') || line.includes('could not load')) ||
-        degraded.verdict.warnings.some((line) => line.includes('not registered')),
-      degraded.verdict.warnings.join(' | '),
+      'KNOWN ROBUSTNESS REGRESSION: a copy outside the package no longer loads at all',
+      degraded.verdict.threw === true,
+      `threw=${String(degraded.verdict.threw)} error=${String(degraded.verdict.error)}`,
     );
+    report.ok(
+      'and it fails on the static schema import specifically, not on something else',
+      String(degraded.verdict.error).includes("Cannot find package '@deepseek-ai/schemastery'"),
+      String(degraded.verdict.error),
+    );
+    report.equal('so the entry contributes nothing: nothing is registered', degraded.verdict.registrations, 0);
   }
 } catch (error) {
   report.skip('degraded host child process', `temp-directory scaffolding unavailable: ${String(error.message)}`);
@@ -532,7 +641,7 @@ try {
   report.ok(
     'and the host half writes the table to that file only — never through the settings service',
     !/settings\.(update|replace)\(/.test(hostSourceText),
-    'only register()/describe() touch the namespace',
+    "the sessions table never travels through the settings service, which now carries only this entry's Config",
   );
 
   // A target that cannot be replaced: `sessions.json` is a DIRECTORY, so rename fails.

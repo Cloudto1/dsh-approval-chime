@@ -22,7 +22,7 @@
  *     same text as the navigation label, one intro line, and the controls inside;
  *   - the page is a real range slider (0..100) + switch + tone select + import button
  *     with its hidden file input + preview + reset + visible counters, and every
- *     control writes through the platform's `settingsScope.set/unset` (never through
+ *     control writes through the platform's `configForms` controller `set/unset` (never through
  *     browser storage);
  *   - a new approval rings once with a master gain of exactly `volume × MASTER_GAIN`,
  *     the same approval can never ring twice, a replacement rings again, and
@@ -107,12 +107,12 @@ const report = createReporter('client-half.test.mjs');
 const source = readText(CLIENT_PATH);
 const rejections = trackUnhandledRejections();
 
-/** Boot one fresh copy of the bundle against a fresh platform. */
-function instantiate(sandboxOptions = {}) {
+/** Boot one fresh copy of the bundle against a fresh platform (and a chosen fake-ctx shape). */
+function instantiate(sandboxOptions = {}, ctxOptions = {}) {
   const sandbox = createClientSandbox(sandboxOptions);
   const registration = sandbox.loader.registrations[0] ?? null;
   const contract = registration === null || sandbox.error !== null ? null : registration.factory(sandbox.requireFn);
-  const harness = createClientCtx();
+  const harness = createClientCtx(ctxOptions);
   if (contract !== null) contract.apply(harness.ctx);
   return {
     sandbox,
@@ -303,7 +303,7 @@ report.deepEqual('no top-level import/export statements', /(^|\n)\s*(import|expo
 report.equal('factory returns the plugin name', bundle.contract?.name, 'dsh-approval-chime');
 report.check('factory returns apply()', typeof bundle.contract?.apply === 'function');
 report.check('factory returns inject[]', Array.isArray(bundle.contract?.inject));
-report.deepEqual('inject covers every service the bundle uses', [...bundle.contract.inject].sort(), ['locale', 'settingsScope', 'slots', 'uiSession']);
+report.deepEqual('inject covers every service the bundle uses', [...bundle.contract.inject].sort(), ['configForms', 'locale', 'slots', 'uiSession']);
 report.check('inject does NOT include remote (no waterfall involvement)', !bundle.contract.inject.includes('remote'));
 report.check(
   'diagnostics surface is installed for headless/manual verification',
@@ -322,7 +322,7 @@ report.ok('the per-session table is addressed through the Host route', source.in
 
 report.section('apply() wiring');
 const wiring = bundle.harness.state;
-report.deepEqual('settings scope is bound to the Host namespace', wiring.boundSpecs, [{ namespace: 'approval-chime' }]);
+report.deepEqual('the settings form is bound to the profile ENTRY ID, not the locale namespace', wiring.formRequests, ['dsh-approval-chime']);
 const settingsEntries = wiring.slotRegistrations.filter((entry) => entry.options?.name === 'settings.section');
 report.equal('exactly one settings entry is registered', settingsEntries.length, 1);
 const sectionEntry = settingsEntries[0];
@@ -405,7 +405,12 @@ report.equal('exactly one range slider (the volume progress bar)', ranges.length
 report.equal('slider min is 0', Number(ranges[0]?.props?.min), 0);
 report.equal('slider max is 100', Number(ranges[0]?.props?.max), 100);
 report.equal('slider shows the effective volume', Number(ranges[0]?.props?.value), 70);
-report.equal('exactly one enable switch', checkboxes.length, 1);
+/* rev-25 puts a SECOND switch on this same page (the Windows notification switch), so the
+   three count assertions below are scoped to the CHIME's own switch instead of to the page.
+   Their meaning is unchanged — "the chime has exactly one switch, one painted track, one
+   knob" — and the new row cannot hide behind them, because the page total is asserted too. */
+report.equal('exactly one enable switch', checkboxes.filter((node) => node.props['aria-label'] === '启用提示音').length, 1);
+report.equal('the page carries exactly two switches: the chime and the Windows notification (rev-25)', checkboxes.length, 2);
 report.equal('switch reflects the effective value', checkboxes[0]?.props?.checked, true);
 /* rev-8: the enable control is painted as the Apple switch. The native input
    keeps the semantics; the styled span mirrors the value for CSS, which cannot
@@ -414,11 +419,16 @@ const switchTracks = collect(view.tree, (node) => node.props !== undefined && no
 const switchKnobs = collect(view.tree, (node) => node.props !== undefined && node.props.className === 'dacKnob');
 report.equal('the enable input reports itself as a switch', checkboxes[0]?.props?.role, 'switch');
 report.equal('the switch states its checked value to assistive tech', checkboxes[0]?.props?.['aria-checked'], true);
-report.equal('exactly one painted switch track', switchTracks.length, 1);
+report.equal('exactly one painted switch track, one per switch', switchTracks.length, checkboxes.length);
+report.equal('and exactly one knob per switch (rev-25: two switches, two knobs)', switchKnobs.length, switchTracks.length);
 report.equal('the painted track shows the on state', switchTracks[0]?.props?.['data-on'], 'true');
 report.equal('the painted track is hidden from assistive tech (the input carries the state)', switchTracks[0]?.props?.['aria-hidden'], 'true');
 report.equal('the painted track is not marked disabled while the namespace is writable', switchTracks[0]?.props?.['data-disabled'], 'false');
-report.equal('the painted track carries exactly one knob', switchKnobs.length, 1);
+report.equal(
+  'the painted track carries exactly one knob',
+  collect(switchTracks[0], (node) => node.props !== undefined && node.props.className === 'dacKnob').length,
+  1,
+);
 report.equal('exactly one tone select', selects.length, 1);
 report.deepEqual('three tones are offered', options.map((option) => option.props.value), ['chime', 'bell', 'beep']);
 report.check('a preview button exists', buttons.some((button) => flattenText(button).includes('试听')));
@@ -429,7 +439,7 @@ report.equal('the hidden file input is still rendered next to the picker', fileI
 report.equal('the remove control is absent while no imported tone is selected', buttons.some((button) => flattenText(button).includes('移除')), false);
 report.equal('exactly one bundle-revision badge', revBadges.length, 1);
 report.equal('the badge names the build the page loaded (the version id, not the prose)', flattenText(revBadges[0]), bundle.diagnostics.revisionId);
-report.equal('the revision stamp is rev-24', String(bundle.diagnostics.revision).startsWith('rev-24'), true);
+report.equal('the revision stamp is rev-29', String(bundle.diagnostics.revision).startsWith('rev-29'), true);
 const statsText = flattenText(view.tree);
 /* rev-21 · the badge prints the ID alone (user request: "这里只显示版本号就行了"). These assertions are
    the tripwire: the badge must be exactly the version id, it must carry no separator, and the full
@@ -753,6 +763,16 @@ report.deepEqual(
   'the legacy diagnostics values are unchanged',
   { plugin: bundle.diagnostics.plugin, namespace: bundle.diagnostics.namespace, slot: bundle.diagnostics.slot, tones: bundle.diagnostics.tones, toneRows: bundle.diagnostics.toneRows },
   { plugin: 'dsh-approval-chime', namespace: 'approval-chime', slot: 'settings.section', tones: ['chime', 'bell', 'beep'], toneRows: 3 },
+);
+// rev-26. `namespace` above is the LOCALE namespace and always was; before the DSH
+// 0.1.7 migration one constant served both meanings, so reading it to prove "the
+// settings namespace is live" happened to work. It no longer does, and because the
+// legacy assertion above still passes it would silently keep "proving" the wrong
+// half. These two must therefore be asserted apart, by name.
+report.deepEqual(
+  'the settings namespace is reported SEPARATELY from the locale one',
+  { locale: bundle.diagnostics.namespace, settings: bundle.diagnostics.settingsNamespace },
+  { locale: 'approval-chime', settings: 'dsh-approval-chime' },
 );
 report.equal('with no fetch at all the table degrades to unread (not to a crash)', bundle.diagnostics.sessions().ready, false);
 report.deepEqual('and an unread table mutes nothing — everybody follows the global settings', bundle.diagnostics.sessions().sessions, {});
@@ -1900,6 +1920,718 @@ report.equal('so the popover carries no error row any more', byClass(obsAView.tr
 report.equal('four reads in total: mount, convergence, one broken manual read, one recovery', obsAStore.reads(), 4);
 report.ok('neither failure produced an unhandled rejection', rejections.seen.length === 0, rejections.seen.map(String).join(' | '));
 
+/* === 5k. rev-25 · the Windows notification bridge (native-toast-接口冻结 §5..§12) === */
+
+/**
+ * A recording stub for the whole native-toast route family. The defaults are the happy
+ * path (a raise the Host registers, a poll that stays `pending`, a revoke the Host takes);
+ * `state` is the single knob a test turns to make one of them fail instead.
+ *
+ * The per-session route is answered harmlessly in the last branch: this feature must not
+ * touch it, and the tests below count only calls whose URL is the notification route.
+ */
+function nativeRoute(options = {}) {
+  const calls = [];
+  const state = {
+    /** The decision a poll answers: 'pending', 'consumed' or one of the two outcomes. */
+    answer: options.answer ?? 'pending',
+    /** Per-token overrides, so two live tokens can be answered at different times. */
+    answers: {},
+    answerStatus: options.answerStatus ?? 200,
+    /**
+     * How many of the NEXT polls die on the wire (the fetch itself rejects → `nativeGet`
+     * resolves `null`). That is the transient failure §8's "fetch 失败 → 诊断计数" row is
+     * about, and it is what a dead socket looks like from inside the page.
+     */
+    pollFailures: options.pollFailures ?? 0,
+    install: options.install ?? 'ready',
+    raiseState: options.raiseState ?? 'raised',
+    raiseReason: options.raiseReason ?? '',
+    raiseRejects: options.raiseRejects === true,
+    /** When set, a revoke answers `answered` with this outcome (press, then refocus). */
+    revokeAnswer: null,
+  };
+  const reply = (status, body) => ({ ok: status === 200, status, json: () => Promise.resolve(body) });
+  const fetchStub = (url, init) => {
+    const requestOptions = init ?? {};
+    const call = { url, options: requestOptions, body: typeof requestOptions.body === 'string' ? JSON.parse(requestOptions.body) : null };
+    calls.push(call);
+    if (requestOptions.method === 'POST' && !url.endsWith('/revoke')) {
+      if (state.raiseRejects) return Promise.reject(new Error('the socket is gone'));
+      if (state.raiseState !== 'raised') return Promise.resolve(reply(200, { ok: true, state: 'skipped', reason: state.raiseReason }));
+      return Promise.resolve(reply(200, { ok: true, state: 'raised', tag: `appr-${call.body.token.slice(0, 11)}` }));
+    }
+    if (requestOptions.method === 'POST') {
+      const results = (call.body.tokens ?? []).map((token) =>
+        state.revokeAnswer === null ? { token, state: 'pending' } : { token, state: 'answered', answer: state.revokeAnswer },
+      );
+      return Promise.resolve(reply(200, { ok: true, results }));
+    }
+    if (url.includes('/answer')) {
+      if (state.pollFailures > 0) {
+        state.pollFailures -= 1;
+        return Promise.reject(new Error('the socket is gone'));
+      }
+      if (state.answerStatus !== 200) return Promise.resolve(reply(state.answerStatus, { ok: false, error: 'unknown token' }));
+      const token = (/[?&]token=([0-9a-f]+)/.exec(url) ?? [])[1] ?? '';
+      const decision = state.answers[token] ?? state.answer;
+      if (decision === 'pending') return Promise.resolve(reply(200, { ok: true, state: 'pending' }));
+      if (decision === 'consumed') return Promise.resolve(reply(200, { ok: true, state: 'consumed' }));
+      // The Host's own off-state answer, byte for byte (§5.2 line 334): the host suite
+      // asserts the same literal straight off the real route (verify/native-toast.test.mjs).
+      if (decision === 'skipped') return Promise.resolve(reply(200, { ok: true, state: 'skipped', reason: 'disabled' }));
+      return Promise.resolve(reply(200, { ok: true, state: 'answered', answer: decision }));
+    }
+    return Promise.resolve(reply(200, { ok: true, state: state.install }));
+  };
+  return {
+    calls,
+    state,
+    fetch: fetchStub,
+    native: () => calls.filter((call) => call.url.includes('native-toast')),
+    raises: () => calls.filter((call) => call.url === '/api/approval-chime/native-toast' && call.options.method === 'POST'),
+    polls: () => calls.filter((call) => call.url.includes('/answer')),
+    revokes: () => calls.filter((call) => call.url.endsWith('/revoke')),
+  };
+}
+
+/**
+ * One instance whose WINDOW and DOCUMENT are controllable before `apply()` runs, plus a
+ * route recorder.
+ *
+ * `_harness.mjs` gives the plugin a `document` with listeners and a global `window`, but
+ * `document.hidden`, `document.hasFocus()`, `window.addEventListener` and `window.crypto`
+ * are exactly what this feature reads — so they are installed here, BEFORE `apply()`, in
+ * the order a browser presents them (the page's own properties exist before the plugin).
+ *
+ * The crypto stub answers a COUNTER, not randomness: the token's SHAPE is what the tests
+ * below can check, and a counter makes two mints distinguishable.
+ */
+function nativeInstance(options = {}) {
+  const route = options.route ?? nativeRoute();
+  const sandbox = createClientSandbox({ fetch: route.fetch });
+  const doc = sandbox.document;
+  const win = sandbox.context.window;
+  const windowListeners = new Map();
+  win.addEventListener = (type, handler) => {
+    if (!windowListeners.has(type)) windowListeners.set(type, new Set());
+    windowListeners.get(type).add(handler);
+  };
+  win.removeEventListener = (type, handler) => {
+    windowListeners.get(type)?.delete(handler);
+  };
+  win.fire = (type) => {
+    const set = windowListeners.get(type);
+    if (!set) return 0;
+    for (const handler of [...set]) handler({ type });
+    return set.size;
+  };
+  doc.hidden = options.hidden === true;
+  doc.hasFocus = () => options.hasFocus === true;
+  // rev-29: the desktop shell's own mark on the document root (`data-platform`, written by
+  // app.asar/lib/preload-app.cjs before the app loads). Installed BEFORE apply(), the order the
+  // real shell uses; absent, the rig is a plain browser and the bundle must not care.
+  if (options.platform !== undefined) doc.documentElement = { dataset: { platform: options.platform } };
+  if (options.crypto === false) win.crypto = undefined;
+  else {
+    // The counter rides the FIRST FOUR bytes, so every mint is a DIFFERENT 128-bit token
+    // (a per-byte counter wraps at 256 and would start repeating after 16 mints).
+    let minted = 0;
+    win.crypto = {
+      getRandomValues: (bytes) => {
+        minted += 1;
+        for (let index = 0; index < bytes.length; index += 1) {
+          bytes[index] = index < 4 ? (minted >>> (index * 8)) & 0xff : (index * 17 + minted * 5) & 0xff;
+        }
+        return bytes;
+      },
+    };
+  }
+  const registration = sandbox.loader.registrations[0];
+  const contract = registration.factory(sandbox.requireFn);
+  const harness = createClientCtx({
+    scopeSnapshot: {
+      value:
+        options.nativeToast === false
+          ? { enabled: true, volume: 70, tone: 'chime' }
+          : { enabled: true, volume: 70, tone: 'chime', nativeToast: true },
+    },
+  });
+  contract.apply(harness.ctx);
+  return {
+    sandbox,
+    doc,
+    win,
+    harness,
+    contract,
+    diagnostics: sandbox.context.window.__DSH_APPROVAL_CHIME__,
+    /** The page teardown: every effect disposed, exactly what the Host calls on unmount. */
+    dispose() {
+      for (const effect of harness.state.effects) {
+        if (typeof effect.dispose === 'function') effect.dispose();
+      }
+    },
+  };
+}
+
+report.section('rev-25 · the frozen copy and the switch row on the SAME settings page');
+
+/** The exact strings §6 froze for `nativeToast` (the two locale blocks must agree). */
+const NATIVE_COPY = {
+  nativeToast: '待审批时弹 Windows 系统通知（带「接受 / 拒绝」按钮）',
+  nativeToastHint: '只在 DSH 窗口不在前台时弹；点通知按钮与在页面里点等价。需先安装 deploy/native-toast/install.ps1。',
+  nativeToastOff: '未启用',
+  nativeToastNotInstalled: '未安装（通知注册缺失）',
+  nativeToastReady: '已就绪',
+  nativeToastUnsupported: '本机不支持（找不到 powershell.exe）',
+};
+report.deepEqual(
+  'the dictionary carries the six frozen rev-25 keys in zh, character for character',
+  Object.keys(NATIVE_COPY).map((key) => dictionary?.zh?.[key]),
+  Object.values(NATIVE_COPY),
+);
+report.deepEqual(
+  'and the zh and en blocks have identical key sets (a one-sided key prints the raw key)',
+  Object.keys(dictionary?.zh ?? {}).sort(),
+  Object.keys(dictionary?.en ?? {}).sort(),
+);
+report.deepEqual(
+  'the six new en strings are the frozen ones',
+  ['nativeToast', 'nativeToastHint', 'nativeToastOff', 'nativeToastNotInstalled', 'nativeToastReady', 'nativeToastUnsupported'].map((key) => dictionary?.en?.[key]),
+  [
+    'Show a Windows notification while an approval waits (with Accept / Reject buttons)',
+    'Only when the DSH window is not in the foreground; the buttons are equivalent to the in-page ones. Install deploy/native-toast/install.ps1 first.',
+    'off',
+    'not installed',
+    'ready',
+    'unsupported on this machine',
+  ],
+);
+report.ok(
+  'the bundle names the route literal exactly once (no second, unguarded call site can be added)',
+  source.split("'/api/approval-chime/native-toast'").length - 1 === 1,
+  `${source.split("'/api/approval-chime/native-toast'").length - 1} occurrence(s)`,
+);
+report.ok('the bundle still never names the approval event', !source.includes('approval/request'));
+report.equal('the new effect is wired under the plugin\'s own label', wiring.effects.filter((effect) => effect.label === 'dsh-approval-chime: native toast').length, 1);
+
+/* The default (no `nativeToast` key anywhere) must be OFF, and off must mean ZERO requests —
+   not "a request the Host refuses" (§6). */
+report.equal('with no stored value the switch resolves to false (the schema default)', bundle.diagnostics.settings().nativeToast, false);
+const offRoute = nativeRoute();
+const offInstance = nativeInstance({ route: offRoute, hidden: true, hasFocus: false, nativeToast: false });
+report.equal('the default is OFF even with the window in the background', offInstance.diagnostics.settings().nativeToast, false);
+offInstance.harness.pushPending([['s-off', approvalInteraction('approval:off', { sessionId: 's-off' })]]);
+offInstance.doc.fire('visibilitychange');
+offInstance.win.fire('focus');
+await settle();
+report.equal('OFF: an approval in the background sends NOTHING to the route', offRoute.native().length, 0);
+report.equal('OFF: the status line was not read either', offRoute.native().length, 0);
+report.equal('OFF: no token was ever minted', offInstance.diagnostics.nativeToast.state().tokens.length, 0);
+report.equal('the chime is untouched by the new switch (it still rang)', offInstance.diagnostics.stats().triggers, 1);
+report.equal('OFF: the status line reads the off copy', offInstance.diagnostics.nativeToast.state().status, 'unknown');
+
+const offView = createRenderer(offInstance.sandbox.react, entryFor(offInstance, 'settings.section').component, {});
+offView.render();
+offView.runEffects();
+await settle();
+const offText = flattenText(offView.tree);
+report.equal('OFF: the page still shows the switch, and no extra request was made', offRoute.native().length, 0);
+report.ok('OFF: the row states the feature is off', offText.includes('未启用'), offText.slice(0, 200));
+
+const onRoute = nativeRoute({ install: 'ready' });
+const onInstance = nativeInstance({ route: onRoute });
+const onOrder = onInstance.harness.state.slotRegistrations.filter((entry) => entry.options?.name === 'settings.section');
+report.equal('the new control did not add a second settings.section registration', onOrder.length, 1);
+report.equal('and the page keeps id@order', `${onOrder[0]?.options?.id}@${onOrder[0]?.options?.order}`, 'approval-chime@16');
+const onView = createRenderer(onInstance.sandbox.react, entryFor(onInstance, 'settings.section').component, {});
+onView.render();
+report.equal('the page still carries exactly one heading', elementsOfType(onView.tree, 'h2').length, 1);
+const nativeSwitches = collect(onView.tree, (node) => node.type === 'input' && node.props.type === 'checkbox' && node.props['aria-label'] === NATIVE_COPY.nativeToast);
+report.equal('the notification switch is rendered on THIS page (found by its own label)', nativeSwitches.length, 1);
+report.equal('it is a switch to assistive tech', nativeSwitches[0]?.props?.role, 'switch');
+report.equal('it states its (frozen) checked value', nativeSwitches[0]?.props?.['aria-checked'], true);
+report.equal('it is checked because the Host answered true', nativeSwitches[0]?.props?.checked, true);
+report.ok('the row prints the frozen label text', flattenText(onView.tree).includes(NATIVE_COPY.nativeToast), flattenText(onView.tree).slice(0, 200));
+report.ok('the row prints the frozen hint text', flattenText(onView.tree).includes(NATIVE_COPY.nativeToastHint), flattenText(onView.tree).slice(0, 400));
+/* The status line is the Host's own verdict, and it is read once the switch is on (§6). */
+onView.runEffects();
+await settle();
+const firstStatusReads = onRoute.calls.filter((call) => call.url === '/api/approval-chime/native-toast' && call.options.method === undefined);
+report.equal('ON: the status line is read exactly once for this turn-on', firstStatusReads.length, 1);
+report.equal('ON: the read is a plain same-origin GET', firstStatusReads[0]?.options.credentials, 'same-origin');
+onView.render();
+report.ok('ON: the status line prints the Host verdict', flattenText(onView.tree).includes('已就绪'), flattenText(onView.tree).slice(0, 300));
+
+/* The switch writes through the EXISTING settings scope commit — one field, no new path. */
+const toggleView = createRenderer(onInstance.sandbox.react, entryFor(onInstance, 'settings.section').component, {});
+const toggle = () => collect(toggleView.render(), (node) => node.type === 'input' && node.props['aria-label'] === NATIVE_COPY.nativeToast)[0];
+const statusReads = () => onRoute.native().filter((call) => call.options.method === undefined).length;
+toggleView.render();
+const readsBeforeToggleView = statusReads();
+toggleView.runEffects();
+await settle();
+report.equal('the status line is read once when the effect runs (one read per turn-on)', statusReads(), readsBeforeToggleView + 1);
+/* A LIVE token, so turning the switch off has something to drop. */
+onInstance.harness.pushPending([['s-on', approvalInteraction('approval:on', { sessionId: 's-on', answer: () => Promise.resolve() })]]);
+await settle();
+report.equal('the ON instance raised one notification', onRoute.raises().length, 1);
+report.equal('and holds one live token', onInstance.diagnostics.nativeToast.state().tokens.length, 1);
+const requestsBeforeOff = onRoute.native().length;
+toggle().props.onChange({ target: { checked: false } });
+await settle();
+report.deepEqual('turning it off writes exactly one field through the settings scope', onInstance.harness.state.setCalls, [{ field: 'nativeToast', value: false }]);
+report.equal('the live token is dropped the instant the switch goes off (no request)', onInstance.diagnostics.nativeToast.state().tokens.length, 0);
+report.equal('and turning it off sent nothing to the route', onRoute.native().length, requestsBeforeOff);
+report.equal('the switch is off on the next render', toggle().props.checked, false);
+await sleep(1150);
+report.equal('nor did the poll that would have fired while it was on', onRoute.native().length, requestsBeforeOff);
+toggle().props.onChange({ target: { checked: true } });
+await settle();
+report.deepEqual('turning it back on writes the same field once more', onInstance.harness.state.setCalls, [{ field: 'nativeToast', value: false }, { field: 'nativeToast', value: true }]);
+/* React re-renders on the new snapshot and then re-runs the status effect (its dependency
+   flipped back to true); the renderer here does both on demand, in that order. The turn-on
+   itself also asks the Host — but only once the write has LANDED, which is the point of
+   gating on the live scope instead of on the click. */
+toggleView.render();
+toggleView.runEffects();
+await settle();
+report.equal('and re-reads the install verdict (a turn-on, so exactly one more read)', statusReads(), readsBeforeToggleView + 2);
+
+/* ----------------------------- the group's place and frame (user ruling 2026-09-24) ------ */
+
+report.section('rev-25 · the notification block is its own group, and it is LAST on the page');
+
+/** The default page: the chime as it ships, the notification switch at its default (off). */
+const groupView = createRenderer(bundle.sandbox.react, sectionEntry.component, {});
+const groupTree = groupView.render();
+const groupBoxes = collect(groupTree, (node) => node.props?.className === 'dacGroupBox');
+report.equal('the notification block is ONE group container', groupBoxes.length, 1);
+const groupBox = groupBoxes[0];
+report.deepEqual(
+  'the group is exactly [heading, switch row, status line, hint line], in that order',
+  groupBox?.children.map((child) => `${child.type}.${String(child.props?.className ?? '')}`),
+  ['h3.dacGroup', 'div.dacRow', 'div.dacHint', 'div.dacHint'],
+);
+report.equal('the group heading prints the frozen copy', flattenText(groupBox?.children[0]), 'Windows 系统通知');
+report.equal('and the en block carries the same heading in its own words', dictionary?.en?.nativeToastGroup, 'Windows notifications');
+report.ok(
+  'the heading key exists in BOTH locale blocks (the key-set equality assertion keeps holding)',
+  typeof dictionary?.zh?.nativeToastGroup === 'string' && typeof dictionary?.en?.nativeToastGroup === 'string',
+  `${String(dictionary?.zh?.nativeToastGroup)} / ${String(dictionary?.en?.nativeToastGroup)}`,
+);
+
+const groupSwitch = collect(groupBox, (node) => node.type === 'input' && node.props?.type === 'checkbox' && node.props['aria-label'] === NATIVE_COPY.nativeToast);
+report.equal('the aria-label locator still finds the switch — inside the group', groupSwitch.length, 1);
+report.equal('it is still a switch to assistive tech', groupSwitch[0]?.props?.role, 'switch');
+report.equal('it is still OFF by default', groupSwitch[0]?.props?.checked, false);
+report.equal('and its painted track still mirrors that', collect(groupBox, (node) => node.props?.className === 'dacSwitch')[0]?.props?.['data-on'], 'false');
+report.equal('the status line sits inside the group, right after the switch row', flattenText(groupBox?.children[2]), NATIVE_COPY.nativeToastOff);
+report.equal('and the hint line follows the status line', flattenText(groupBox?.children[3]), NATIVE_COPY.nativeToastHint);
+
+/* RENDER ORDER, read off the tree — not source order. */
+const groupCard = collect(groupTree, (node) => node.props?.className === 'dacCard')[0];
+const cardChildren = groupCard === undefined ? [] : groupCard.children;
+const indexesOfClass = (className) => cardChildren.map((child, index) => (child.props?.className === className ? index : -1)).filter((index) => index >= 0);
+const cardIndex = (className) => cardChildren.findIndex((child) => child.props?.className === className);
+const groupIndex = cardIndex('dacGroupBox');
+report.equal('the chime still owns exactly three rows (enable, volume, tone)', indexesOfClass('dacRow').length, 3);
+report.ok(
+  'the group is rendered after EVERY chime row',
+  indexesOfClass('dacRow').length > 0 && Math.max(...indexesOfClass('dacRow')) < groupIndex,
+  `rows at ${JSON.stringify(indexesOfClass('dacRow'))}, group at ${groupIndex}`,
+);
+report.ok('and after the stats line the chime owns', cardIndex('dacStats') >= 0 && cardIndex('dacStats') < groupIndex, `stats at ${cardIndex('dacStats')}, group at ${groupIndex}`);
+report.equal('the group is the LAST thing in the page card (nothing follows it)', groupIndex, cardChildren.length - 1);
+report.equal('the page still carries exactly one page-level <h2> (the group heading is an h3)', elementsOfType(groupTree, 'h2').length, 1);
+report.equal('the page still carries exactly two switches, one per feature', collect(groupTree, (node) => node.type === 'input' && node.props?.type === 'checkbox').length, 2);
+report.equal(
+  'and the group did NOT become a settings section of its own',
+  wiring.slotRegistrations.filter((entry) => entry.options?.name === 'settings.section').length,
+  1,
+);
+
+/* The writability gate is unchanged: a read-only namespace disables the group's switch too. */
+const readOnlyGroupInstance = instantiate();
+readOnlyGroupInstance.harness.state.scopeSnapshot = { ...readOnlyGroupInstance.harness.state.scopeSnapshot, writable: false };
+readOnlyGroupInstance.harness.notifyScope();
+const readOnlyGroupTree = createRenderer(readOnlyGroupInstance.sandbox.react, entryFor(readOnlyGroupInstance, 'settings.section').component, {}).render();
+const readOnlyGroupSwitch = collect(readOnlyGroupTree, (node) => node.type === 'input' && node.props?.type === 'checkbox' && node.props['aria-label'] === NATIVE_COPY.nativeToast)[0];
+report.equal('a read-only namespace disables the group switch too (the gate did not move)', readOnlyGroupSwitch?.props?.disabled, true);
+
+/* The frame is this plugin's OWN injected CSS — no external stylesheet, no host class. */
+report.ok(
+  'the group heading is small, medium-weight and muted, on the same token the stats line uses',
+  styleText.includes('.dacGroup{margin:0;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary,#71717a);}'),
+  styleText.includes('.dacGroup{') ? 'rule present' : 'rule missing',
+);
+report.ok(
+  'and the group frame is a hairline separator above it, not a second framed panel',
+  styleText.includes('.dacGroupBox{display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.14));}'),
+  styleText.includes('.dacGroupBox{') ? 'rule present' : 'rule missing',
+);
+
+/* ------------------------------------------------------------- the four cases (§12(b)) */
+
+report.section('rev-25 · the foreground gate: four combinations, four request counts');
+
+/** One fresh instance per case: a new approval while the window is in that state. */
+async function foregroundCase(hidden, hasFocus) {
+  const route = nativeRoute();
+  const instance = nativeInstance({ route, hidden, hasFocus });
+  instance.harness.pushPending([['s-gate', approvalInteraction('approval:gate', { sessionId: 's-gate', toolName: 'Bash' })]]);
+  await settle();
+  return { instance, route };
+}
+
+const caseVisibleFocused = await foregroundCase(false, true);
+report.equal('visible AND focused: ZERO requests (not a request the Host refuses)', caseVisibleFocused.route.native().length, 0);
+report.equal('visible AND focused: no token record was created either', caseVisibleFocused.instance.diagnostics.nativeToast.state().tokens.length, 0);
+
+const caseVisibleUnfocused = await foregroundCase(false, false);
+report.equal('visible but NOT focused (side by side): exactly one request', caseVisibleUnfocused.route.native().length, 1);
+report.equal('and it is the raise, nothing else', caseVisibleUnfocused.route.raises().length, 1);
+
+const caseHiddenUnfocused = await foregroundCase(true, false);
+report.equal('minimised (hidden, unfocused): exactly one request', caseHiddenUnfocused.route.native().length, 1);
+report.equal('and it is the raise, nothing else', caseHiddenUnfocused.route.raises().length, 1);
+
+const caseHiddenFocused = await foregroundCase(true, true);
+report.equal('hidden wins over hasFocus(): exactly one request', caseHiddenFocused.route.native().length, 1);
+report.equal('and it is the raise, nothing else', caseHiddenFocused.route.raises().length, 1);
+
+/* ----------------------------------------------------------- the raise request (§5/§7) */
+
+report.section('rev-25 · the raise request body, the token and the TTL');
+
+const roundTripRoute = nativeRoute();
+const bridge = nativeInstance({ route: roundTripRoute, hidden: true, hasFocus: false });
+const answered = [];
+const pendingKey = 'approval:round-trip';
+const interaction = approvalInteraction(pendingKey, {
+  sessionId: 's-rt',
+  toolName: 'Write',
+  reason: '写文件需要授权',
+  answer: (decision) => {
+    answered.push(decision);
+    return Promise.resolve();
+  },
+});
+bridge.harness.pushPending([['s-rt', interaction]]);
+await settle();
+const raise = roundTripRoute.raises()[0];
+report.equal('the raise is a POST to the frozen route', raise?.url, '/api/approval-chime/native-toast');
+report.equal('it asks for same-origin credentials', raise?.options.credentials, 'same-origin');
+report.equal('and declares a JSON body', raise?.options.headers?.['content-type'], 'application/json');
+report.deepEqual(
+  'the body carries exactly the five frozen fields (token, key, sessionId, toolName, reason)',
+  Object.keys(raise?.body ?? {}).sort(),
+  ['key', 'reason', 'sessionId', 'token', 'toolName'],
+);
+report.equal('the token is 32 lowercase hex', /^[0-9a-f]{32}$/.test(String(raise?.body?.token)), true);
+report.equal('the key is the interaction key the chime deduplicates by', raise?.body?.key, pendingKey);
+report.equal('the session id rides along', raise?.body?.sessionId, 's-rt');
+report.equal('the tool name rides along (the notification names the tool)', raise?.body?.toolName, 'Write');
+report.equal('the reason rides along when there is one', raise?.body?.reason, '写文件需要授权');
+report.equal('the chime rang for the same approval, exactly once', bridge.diagnostics.stats().triggers, 1);
+const liveTokens = bridge.diagnostics.nativeToast.state().tokens;
+report.equal('one token is live', liveTokens.length, 1);
+report.equal('the tag is appr- plus the token\'s first 11 hex (16 characters)', liveTokens[0]?.tag, `appr-${String(raise?.body?.token ?? '').slice(0, 11)}`);
+report.equal('the tag is exactly 16 characters', liveTokens[0]?.tag?.length, 16);
+report.equal('the token TTL is the frozen 600000 ms', (liveTokens[0]?.expiresAt ?? 0) - (liveTokens[0]?.createdAt ?? 0), 600000);
+report.equal('the diagnostics expose the frozen poll interval', bridge.diagnostics.nativeToast.pollMs, 1000);
+report.equal('and the route the page talks to', bridge.diagnostics.nativeToast.route, '/api/approval-chime/native-toast');
+report.equal('nothing was answered yet', answered.length, 0);
+
+/* A re-publication of the SAME key must not raise a second notification (dedup by key). */
+bridge.harness.pushPending([['s-rt', interaction]]);
+await settle();
+report.equal('re-publishing the same approval raises no second notification', roundTripRoute.raises().length, 1);
+/* A REPLACEMENT is a new key: the old approval is gone from the snapshot, so its token is
+   revoked (that notification must go away) and the new one gets a notification of its own. */
+bridge.harness.pushPending([['s-rt', approvalInteraction('approval:round-trip-2', { sessionId: 's-rt', toolName: 'Write' })]]);
+await settle();
+report.equal('a replacement approval (new key) does raise again', roundTripRoute.raises().length, 2);
+report.equal('the replaced approval\'s notification was revoked', roundTripRoute.revokes().length, 1);
+report.equal('and exactly the new token is live', bridge.diagnostics.nativeToast.state().tokens.length, 1);
+report.equal('the live token belongs to the new key', bridge.diagnostics.nativeToast.state().tokens[0]?.key, 'approval:round-trip-2');
+
+/* --------------------------------------------------- polling and the answer path (§5.2/§9) */
+
+report.section('rev-25 · the poll delivers the decision through the page\'s OWN answer()');
+
+const answerRoute = nativeRoute();
+const answerBridge = nativeInstance({ route: answerRoute, hidden: true, hasFocus: false });
+const delivered = [];
+answerBridge.harness.pushPending([
+  ['s-a1', approvalInteraction('approval:a1', { sessionId: 's-a1', toolName: 'Bash', answer: (decision) => { delivered.push(`a1:${decision}`); return Promise.resolve(); } })],
+  ['s-a2', approvalInteraction('approval:a2', { sessionId: 's-a2', toolName: 'Bash', answer: (decision) => { delivered.push(`a2:${decision}`); return Promise.resolve(); } })],
+]);
+await settle();
+const tokenA1 = answerRoute.raises()[0]?.body?.token;
+const tokenA2 = answerRoute.raises()[1]?.body?.token;
+report.equal('both approvals were raised', answerRoute.raises().length, 2);
+report.equal('and both hold a live token', answerBridge.diagnostics.nativeToast.state().tokens.length, 2);
+await sleep(1150);
+const polls = answerRoute.polls();
+report.equal('each token is polled once per second', polls.length, 2);
+report.deepEqual(
+  'the poll addresses the frozen sub-path with the token in the query',
+  polls.map((call) => call.url).sort(),
+  [`/api/approval-chime/native-toast/answer?token=${tokenA1}`, `/api/approval-chime/native-toast/answer?token=${tokenA2}`].sort(),
+);
+report.equal('the poll is a same-origin read', polls[0]?.options.credentials, 'same-origin');
+
+/* The Host says "the user pressed 接受 on a1" — the decision must reach the PAGE's own
+   `PendingApproval.answer()`, and a1's token must end (the Host removed the notification).
+   a2 is still `pending`, so it must NOT be answered by a1's decision. */
+answerRoute.state.answers[tokenA1] = 'allowed-once';
+await sleep(1150);
+report.deepEqual('the decision reached the page\'s own answer() exactly once', delivered, ['a1:allowed-once']);
+report.equal('the answered token ended', answerBridge.diagnostics.nativeToast.state().tokens.length, 1);
+report.equal('a1 is the one that ended', answerBridge.diagnostics.nativeToast.state().tokens[0]?.token, tokenA2);
+report.equal('and it is counted as answered', answerBridge.diagnostics.nativeToast.state().counters.answered, 1);
+
+/* A second press of the same notification cannot produce a second answer (§8). */
+await sleep(1150);
+report.deepEqual('no second answer for the same token', delivered, ['a1:allowed-once']);
+
+/* The notification for a2 is pressed too — 拒绝 must travel the same path. */
+answerRoute.state.answers[tokenA2] = 'rejected';
+await sleep(1150);
+report.deepEqual('the second decision arrived with the other outcome', delivered, ['a1:allowed-once', 'a2:rejected']);
+report.equal('both tokens ended', answerBridge.diagnostics.nativeToast.state().tokens.length, 0);
+report.equal('two decisions were delivered in total', answerBridge.diagnostics.nativeToast.state().counters.answered, 2);
+
+/* An approval the PAGE already settled: the decision is dropped, never delivered (§8). */
+const staleRoute = nativeRoute();
+const staleBridge = nativeInstance({ route: staleRoute, hidden: true, hasFocus: false });
+const staleDelivered = [];
+staleBridge.harness.pushPending([['s-stale', approvalInteraction('approval:stale', { sessionId: 's-stale', answer: (decision) => { staleDelivered.push(decision); return Promise.resolve(); } })]]);
+await settle();
+staleBridge.harness.pushPending([]);
+staleRoute.state.answer = 'allowed-once';
+/* The sweep already revoked it: that is §7's "settled in the page ⇒ the toast goes away". */
+await settle();
+report.equal('a settled approval revokes its notification', staleRoute.revokes().length, 1);
+report.equal('the revoke carries the token', staleRoute.revokes()[0]?.body?.tokens?.length, 1);
+report.equal('and the token is gone', staleBridge.diagnostics.nativeToast.state().tokens.length, 0);
+report.equal('the revoke is counted', staleBridge.diagnostics.nativeToast.state().counters.revoked, 1);
+report.deepEqual('nothing was ever delivered for it', staleDelivered, []);
+
+/* --------------------------------------------------- coming back to the foreground (§12(c)) */
+
+report.section('rev-25 · returning to the foreground revokes once, and never loses a click');
+
+const backRoute = nativeRoute();
+const backBridge = nativeInstance({ route: backRoute, hidden: true, hasFocus: false });
+const backDelivered = [];
+backBridge.harness.pushPending([['s-b', approvalInteraction('approval:back', { sessionId: 's-b', answer: (decision) => { backDelivered.push(decision); return Promise.resolve(); } })]]);
+await settle();
+const backToken = backRoute.raises()[0]?.body?.token;
+report.equal('the approval was raised while the window was away', backRoute.raises().length, 1);
+backBridge.win.fire('blur');
+await settle();
+report.equal('blur alone revokes NOTHING (leaving the foreground is not returning to it)', backRoute.revokes().length, 0);
+report.equal('the token is still live after the blur', backBridge.diagnostics.nativeToast.state().tokens.length, 1);
+/* The window comes back VISIBLE: the visibilitychange listener revokes once. */
+backBridge.doc.hidden = false;
+backBridge.doc.hasFocus = () => true;
+backBridge.doc.fire('visibilitychange');
+await settle();
+report.equal('becoming visible revokes the live token exactly once', backRoute.revokes().length, 1);
+report.deepEqual('the revoke body is the frozen { tokens: [...] }', backRoute.revokes()[0]?.body, { tokens: [backToken] });
+report.equal('the token ended with the revoke', backBridge.diagnostics.nativeToast.state().tokens.length, 0);
+report.equal('the revoke reason is recorded (visible, not settled)', backBridge.diagnostics.nativeToast.state().lastRevokeReason, 'visible');
+
+/* The focus listener is the second way back — and the Host may hand over an answer it
+   already recorded, which must NOT be dropped (§12(c), the press-then-refocus race). */
+const focusRoute = nativeRoute();
+const focusBridge = nativeInstance({ route: focusRoute, hidden: true, hasFocus: false });
+const focusDelivered = [];
+focusBridge.harness.pushPending([
+  ['s-f', approvalInteraction('approval:focus', { sessionId: 's-f', answer: (decision) => { focusDelivered.push(decision); return Promise.resolve(); } })],
+]);
+await settle();
+focusRoute.state.revokeAnswer = 'rejected';
+focusRoute.state.answer = 'rejected';
+focusBridge.win.fire('focus');
+await settle();
+report.equal('focus revokes the live token once', focusRoute.revokes().length, 1);
+report.equal('an answer the Host recorded BEFORE the revoke is not lost', focusDelivered.length, 1);
+report.deepEqual('and it is the outcome the user pressed', focusDelivered, ['rejected']);
+
+/* --------------------------------------------------------------- fail-closed (§8) */
+
+report.section('rev-25 · every failure path ends the token and produces no answer');
+
+/** Raise one approval, then let the raise answer be `skipped` with `reason`. */
+async function skippedCase(reason) {
+  const route = nativeRoute();
+  route.state.raiseState = 'skipped';
+  route.state.raiseReason = reason;
+  const bridge = nativeInstance({ route, hidden: true, hasFocus: false });
+  bridge.harness.pushPending([['s-skip', approvalInteraction('approval:skip', { sessionId: 's-skip' })]]);
+  await settle();
+  return { route, bridge };
+}
+
+const skipped = await skippedCase('not-installed');
+report.equal('a skipped raise is one request and then silence', skipped.route.raises().length, 1);
+report.equal('no token is left behind', skipped.bridge.diagnostics.nativeToast.state().tokens.length, 0);
+report.equal('the skip is counted', skipped.bridge.diagnostics.nativeToast.state().counters.skipped, 1);
+report.equal('the Host reason becomes the status line', skipped.bridge.diagnostics.nativeToast.state().status, 'not-installed');
+await sleep(1150);
+report.equal('a skipped raise is NEVER polled', skipped.route.polls().length, 0);
+report.equal('and never revoked', skipped.route.revokes().length, 0);
+const skipView = createRenderer(skipped.bridge.sandbox.react, entryFor(skipped.bridge, 'settings.section').component, {});
+skipView.render();
+report.ok('so the page prints "not installed"', flattenText(skipView.tree).includes(NATIVE_COPY.nativeToastNotInstalled), flattenText(skipView.tree).slice(0, 400));
+
+const noPowerShell = await skippedCase('no-powershell');
+report.equal('a machine without powershell.exe is reported as unsupported', noPowerShell.bridge.diagnostics.nativeToast.state().status, 'no-powershell');
+
+/* A dead socket on the raise: counted, dropped, never polled. */
+const failingRoute = nativeRoute();
+failingRoute.state.raiseRejects = true;
+const failingBridge = nativeInstance({ route: failingRoute, hidden: true, hasFocus: false });
+failingBridge.harness.pushPending([['s-fail', approvalInteraction('approval:fail', { sessionId: 's-fail' })]]);
+await settle();
+report.check(
+  'a raise that never answers is counted as failed',
+  failingBridge.diagnostics.nativeToast.state().counters.failed === 1,
+  JSON.stringify(failingBridge.diagnostics.nativeToast.state().counters),
+);
+report.equal('and leaves no token', failingBridge.diagnostics.nativeToast.state().tokens.length, 0);
+
+/* A 404 on the poll: the token is dead host-side, so the page stops asking. */
+const goneRoute = nativeRoute();
+const goneBridge = nativeInstance({ route: goneRoute, hidden: true, hasFocus: false });
+goneBridge.harness.pushPending([['s-gone', approvalInteraction('approval:gone', { sessionId: 's-gone' })]]);
+await settle();
+goneRoute.state.answerStatus = 404;
+await sleep(1150);
+report.equal('a 404 ends the token', goneBridge.diagnostics.nativeToast.state().tokens.length, 0);
+const gonePolls = goneRoute.polls().length;
+await sleep(1150);
+report.equal('and nothing polls after it', goneRoute.polls().length, gonePolls);
+
+/* `consumed`: somebody took the answer; the page must stop too. */
+const consumedRoute = nativeRoute();
+const consumedBridge = nativeInstance({ route: consumedRoute, hidden: true, hasFocus: false });
+consumedBridge.harness.pushPending([['s-c', approvalInteraction('approval:consumed', { sessionId: 's-c' })]]);
+await settle();
+consumedRoute.state.answer = 'consumed';
+await sleep(1150);
+report.equal('a consumed token ends', consumedBridge.diagnostics.nativeToast.state().tokens.length, 0);
+
+/* rev-25 repair (t8 review, client half): TWO verbs that used to be one.
+ *
+ * (1) A poll that never produced an ANSWER is TRANSIENT (§8, "路由整体不可用 … fetch 失败 →
+ *     诊断计数"). The record and its timer stay, the failure is counted, and the next tick
+ *     asks again — the answer file is the Host's and survives a dead socket, so dropping the
+ *     token here would throw away a click the user already made. */
+const flakyRoute = nativeRoute();
+const flakyBridge = nativeInstance({ route: flakyRoute, hidden: true, hasFocus: false });
+const flakyDelivered = [];
+flakyBridge.harness.pushPending([
+  ['s-flaky', approvalInteraction('approval:flaky', { sessionId: 's-flaky', answer: (decision) => { flakyDelivered.push(decision); return Promise.resolve(); } })],
+]);
+await settle();
+const flakyToken = flakyRoute.raises()[0]?.body?.token;
+report.equal('the approval was raised once', flakyRoute.raises().length, 1);
+report.equal('the record starts with an armed poll timer', flakyBridge.diagnostics.nativeToast.state().tokens[0]?.timer, true);
+flakyRoute.state.pollFailures = 1;
+await sleep(1150);
+report.equal('the dead poll was one request', flakyRoute.polls().length, 1);
+report.equal('a transient poll failure does NOT drop the token', flakyBridge.diagnostics.nativeToast.state().tokens.length, 1);
+report.equal('nor does it disarm the poll timer', flakyBridge.diagnostics.nativeToast.state().tokens[0]?.timer, true);
+report.equal('it is counted as a failure instead', flakyBridge.diagnostics.nativeToast.state().counters.failed, 1);
+report.ok('and the reason is written to the diagnostics line', String(flakyBridge.diagnostics.nativeToast.state().error).length > 0, flakyBridge.diagnostics.nativeToast.state().error);
+report.equal('a transient failure sends no revoke', flakyRoute.revokes().length, 0);
+report.equal('and it never answers the approval', flakyDelivered.length, 0);
+await sleep(1150);
+report.equal('the NEXT tick polls again (the token is kept through the failure)', flakyRoute.polls().length, 2);
+report.equal('a healthy tick does not inflate the failure counter', flakyBridge.diagnostics.nativeToast.state().counters.failed, 1);
+flakyRoute.state.answers[flakyToken] = 'allowed-once';
+await sleep(1150);
+report.deepEqual('so the click still arrives after the transient failure', flakyDelivered, ['allowed-once']);
+report.equal('and the token ends the moment the answer is delivered', flakyBridge.diagnostics.nativeToast.state().tokens.length, 0);
+
+/* (2) An ANSWER that says `state:"skipped"` is a VERDICT, not a silence (§5.1's "客户端对任何
+ *     `state:"skipped"` 的处理", §8's "开关关闭" row): the token is given up at once — no
+ *     further polling AND no revoke — with one diagnostic count. The Host really answers this
+ *     while the switch is off (verify/native-toast.test.mjs asserts the literal off the route;
+ *     this stub replays it byte for byte, which is the point of the pair). */
+const skippedPollRoute = nativeRoute();
+const skippedPollBridge = nativeInstance({ route: skippedPollRoute, hidden: true, hasFocus: false });
+skippedPollBridge.harness.pushPending([['s-sk', approvalInteraction('approval:sk', { sessionId: 's-sk', answer: () => Promise.resolve() })]]);
+await settle();
+const skippedToken = skippedPollRoute.raises()[0]?.body?.token;
+skippedPollRoute.state.answers[skippedToken] = 'skipped';
+await sleep(1150);
+report.equal('the skipped poll was one request', skippedPollRoute.polls().length, 1);
+report.equal('a `skipped` answer ends the token', skippedPollBridge.diagnostics.nativeToast.state().tokens.length, 0);
+report.equal('and it is counted as a skip', skippedPollBridge.diagnostics.nativeToast.state().counters.skipped, 1);
+report.equal('it is not counted as a failure', skippedPollBridge.diagnostics.nativeToast.state().counters.failed, 0);
+report.equal('a skipped token is never revoked (the switch is off host-side)', skippedPollRoute.revokes().length, 0);
+report.equal('a skipped token is never polled again', skippedPollRoute.polls().length, 1);
+await sleep(1150);
+report.equal('and still no poll a tick later', skippedPollRoute.polls().length, 1);
+
+/* No crypto source: fail-closed (§7) — never a weak token. */
+const weakRoute = nativeRoute();
+const weakBridge = nativeInstance({ route: weakRoute, hidden: true, hasFocus: false, crypto: false });
+weakBridge.harness.pushPending([['s-w', approvalInteraction('approval:weak', { sessionId: 's-w' })]]);
+await settle();
+report.equal('a page without crypto.getRandomValues sends NOTHING (never a weak token)', weakRoute.native().length, 0);
+report.equal('and says so on its own counter', weakBridge.diagnostics.nativeToast.state().counters.unsupported, 1);
+
+/* ----------------------------------------------------- chunking and lifecycle (§5/§7) */
+
+report.section('rev-25 · the revoke is chunked at 32, and unmount leaves nothing behind');
+
+const sweepRoute = nativeRoute();
+const sweepBridge = nativeInstance({ route: sweepRoute, hidden: true, hasFocus: false });
+const many = [];
+for (let index = 0; index < 33; index += 1) {
+  const id = `s-sweep-${index}`;
+  many.push([id, approvalInteraction(`approval:sweep-${index}`, { sessionId: id })]);
+}
+sweepBridge.harness.pushPending(many);
+await settle();
+report.equal('33 approvals raise 33 notifications', sweepRoute.raises().length, 33);
+report.equal('and hold 33 tokens', sweepBridge.diagnostics.nativeToast.state().tokens.length, 33);
+sweepBridge.harness.pushPending([]);
+await settle();
+await settle();
+const sweeps = sweepRoute.revokes();
+report.equal('one sweep is split into two requests', sweeps.length, 2);
+report.deepEqual('the first carries exactly the route\'s maximum of 32 tokens', [sweeps[0]?.body?.tokens?.length, sweeps[1]?.body?.tokens?.length], [32, 1]);
+report.equal('every token is revoked exactly once', new Set(sweeps.flatMap((call) => call.body.tokens)).size, 33);
+report.equal('and no token survives the sweep', sweepBridge.diagnostics.nativeToast.state().tokens.length, 0);
+sweepBridge.dispose();
+
+/* The disposer is the page teardown: no timer, no listener and no request may outlive it. */
+const disposeRoute = nativeRoute();
+const disposeBridge = nativeInstance({ route: disposeRoute, hidden: true, hasFocus: false });
+disposeBridge.harness.pushPending([['s-d', approvalInteraction('approval:dispose', { sessionId: 's-d' })]]);
+await settle();
+report.equal('a live token before the teardown', disposeBridge.diagnostics.nativeToast.state().tokens.length, 1);
+disposeBridge.dispose();
+const requestsAtDispose = disposeRoute.calls.length;
+disposeBridge.doc.fire('visibilitychange');
+disposeBridge.win.fire('focus');
+await sleep(1150);
+report.equal('after the teardown the listeners are gone (no request)', disposeRoute.calls.length, requestsAtDispose);
+report.equal('and no polling timer survives it either', disposeRoute.polls().length, 0);
+report.equal('the teardown dropped the token without a request', disposeBridge.diagnostics.nativeToast.state().tokens.length, 0);
+
+for (const instance of [offInstance, onInstance, caseVisibleFocused.instance, caseVisibleUnfocused.instance, caseHiddenUnfocused.instance, caseHiddenFocused.instance, bridge, answerBridge, staleBridge, backBridge, focusBridge, skipped.bridge, noPowerShell.bridge, failingBridge, goneBridge, consumedBridge, flakyBridge, skippedPollBridge, weakBridge]) {
+  instance.dispose();
+}
+report.ok('rev-25 left no unhandled rejection behind', rejections.seen.length === 0, rejections.seen.map(String).join(' | '));
+
 /* ------------------------------------------------- 6. autoplay + degradation */
 
 report.section('autoplay unlock, failure modes, and degradations');
@@ -1955,6 +2687,153 @@ report.equal(
   degradedCtx.state.slotRegistrations.filter((entry) => entry.options?.name === 'conversation.session.header.actions').length,
   1,
 );
+
+/* === 6. rev-27 · the trigger source moved to uiSession.sessionStatus (DSH 0.1.7) === */
+
+report.section('rev-27 · the chime watches sessionStatus, the member DSH 0.1.7 replaced it with');
+
+// Why this section exists at all: DSH 0.1.7 removed `uiSession.pendingInteractions`. Every rig
+// above supplies that removed member, so the suite stayed green while a REAL page went silent
+// (rev-27 note in docs/契约调研.md). The rigs below supply the NEW member instead — a rig that
+// rings here can only have bound `sessionStatus`.
+const modern = instantiate({}, { pendingShape: 'dsh017' });
+report.deepEqual(
+  'the 0.1.7 rig exposes sessionStatus and NOT the removed member',
+  [typeof modern.harness.ctx.uiSession.sessionStatus, modern.harness.ctx.uiSession.pendingInteractions],
+  ['object', undefined],
+);
+report.equal('exactly one subscription is taken on the new member', modern.harness.state.pendingListeners.size, 1);
+modern.harness.pushPending([['session-1', approvalInteraction('approval:1')]]);
+report.equal('an approval published in the 0.1.7 shape rings', modern.diagnostics.stats().triggers, 1);
+report.equal('and is counted as seen', modern.diagnostics.stats().approvalsSeen, 1);
+report.equal('with the settings values, unchanged by the move', modern.diagnostics.stats().lastTone, 'chime');
+// The 0.1.7 snapshot rebuilds every ROW object on every publish, so a diff keyed on the row
+// rather than on the interaction's `key` would ring again here. That is the regression this pins.
+modern.harness.pushPending([['session-1', approvalInteraction('approval:1')]]);
+report.equal('a re-published row for the SAME key does not ring again', modern.diagnostics.stats().triggers, 1);
+report.equal('and the seen counter did not move either', modern.diagnostics.stats().approvalsSeen, 1);
+modern.harness.pushPending([['session-1', approvalInteraction('approval:2', { toolName: 'Write' })]]);
+report.equal('a NEW key in the same session rings once more', modern.diagnostics.stats().triggers, 2);
+// A session that is running with nothing pending is a ROW with no interaction, not an absence.
+modern.harness.pushPending([['session-1', null]]);
+report.equal('a row carrying no interaction does not ring', modern.diagnostics.stats().triggers, 2);
+report.equal('and it is not counted as an approval either', modern.diagnostics.stats().approvalsSeen, 2);
+
+// The per-session rules (rev-10) have to survive the move: own volume, own mute, one chime each.
+const modernBatch = instantiate(
+  { fetch: sessionsFetch({ 's-b': { volume: 30, updatedAt: 1 }, 's-c': { enabled: false, updatedAt: 2 } }).fetch },
+  { pendingShape: 'dsh017' },
+);
+await settle();
+modernBatch.harness.pushPending([
+  ['s-a', approvalInteraction('approval:a', { sessionId: 's-a' })],
+  ['s-b', approvalInteraction('approval:b', { sessionId: 's-b' })],
+  ['s-c', approvalInteraction('approval:c', { sessionId: 's-c' })],
+]);
+const modernStats = () => modernBatch.diagnostics.stats();
+report.equal('a 0.1.7 batch of three sessions is one batch', modernStats().lastBatchSize, 3);
+report.equal('two of them are audible (the third is muted by its own record)', modernStats().lastBatchPlayed, 2);
+report.equal('the muted session has its own counter in the new shape too', modernStats().suppressedSession, 1);
+report.equal('the first session rings immediately', modernStats().triggers, 1);
+await sleep(240);
+report.equal('and the second rings after the 180 ms gap, not with it', modernStats().triggers, 2);
+report.equal('all three were counted as seen', modernStats().approvalsSeen, 3);
+
+// ONE source, chosen new-first: with BOTH members present the new one must be the binding, and
+// the removed one must not be subscribed at all (§12(a) forbids a second observer).
+const bothSandbox = createClientSandbox();
+const bothContract = bothSandbox.loader.registrations[0].factory(bothSandbox.requireFn);
+const bothCtx = createClientCtx({ pendingShape: 'dsh017' });
+let legacySubscribers = 0;
+bothCtx.ctx.uiSession.pendingInteractions = {
+  getSnapshot: () => new Map(),
+  subscribe() {
+    legacySubscribers += 1;
+    return () => {};
+  },
+};
+bothContract.apply(bothCtx.ctx);
+report.deepEqual(
+  'when both members exist the new one wins, exactly once',
+  [bothCtx.state.pendingListeners.size, legacySubscribers],
+  [1, 0],
+);
+
+// With NEITHER member the page still mounts and degrades to silence instead of throwing.
+const bareSandbox = createClientSandbox();
+const bareContract = bareSandbox.loader.registrations[0].factory(bareSandbox.requireFn);
+const bareCtx = createClientCtx();
+bareCtx.ctx.uiSession = {};
+let bareThrew = null;
+try {
+  bareContract.apply(bareCtx.ctx);
+} catch (error) {
+  bareThrew = error.message;
+}
+report.check('a uiSession with neither member degrades instead of throwing', bareThrew === null, bareThrew ?? '');
+report.equal(
+  'and the settings section still registers',
+  bareCtx.state.slotRegistrations.filter((entry) => entry.options?.name === 'settings.section').length,
+  1,
+);
+
+/* === 7. rev-29 · the desktop runtime is REPORTED, and the trigger rule is unchanged === */
+
+report.section('rev-29 · the desktop runtime probe (runtime fact only) and the unchanged gate');
+
+// The desktop shell marks the document root before the app loads (dsh-desktop 0.2.0-rc.2 =
+// Electron 44, app.asar/lib/preload-app.cjs:50-56 — `documentElement.dataset.platform =
+// process.platform`). The bundle may READ that mark and report it; it may not sniff a UA, and it
+// must not branch on it: a page without the mark has to behave exactly like the web page.
+report.equal('a page with no mark reports no platform (the headless harness is one)', bundle.diagnostics.platform(), null);
+report.ok(
+  'and the bundle never sniffs the user agent to guess a desktop (rev-29 rule)',
+  !/navigator\.userAgent|userAgentData|appVersion|userAgent/.test(source),
+  'no navigator.user* read anywhere in lib/client.js',
+);
+report.equal('the build stamps itself rev-29 for the console and the badge', bundle.diagnostics.revisionId, 'rev-29');
+
+// The mark installed BEFORE apply(), the way the shell does it: the page now answers 'win32'.
+const markedSandbox = createClientSandbox();
+markedSandbox.document.documentElement = { dataset: { platform: 'win32' } };
+const markedContract = markedSandbox.loader.registrations[0].factory(markedSandbox.requireFn);
+markedContract.apply(createClientCtx().ctx);
+const markedDiagnostics = markedSandbox.context.window.__DSH_APPROVAL_CHIME__;
+report.equal('a desktop-marked page answers the runtime fact', markedDiagnostics.platform(), 'win32');
+report.equal('and still binds a pending source it can live with', markedDiagnostics.pendingHook(), 'pendingInteractions');
+
+// WHICH shape bound is observable (rev-29): the field a fixture reads to prove the 0.2.0 shape was
+// the one SELECTED, rather than merely "some shape worked".
+report.equal('the default rig binds the pre-0.1.7 member it supplies', bundle.diagnostics.pendingHook(), 'pendingInteractions');
+const modernHook = instantiate({}, { pendingShape: 'dsh017' });
+report.equal('the 0.2.0 rig binds sessionStatus', modernHook.diagnostics.pendingHook(), 'sessionStatus');
+const noSourceSandbox = createClientSandbox();
+const noSourceContract = noSourceSandbox.loader.registrations[0].factory(noSourceSandbox.requireFn);
+const noSourceCtx = createClientCtx();
+noSourceCtx.ctx.uiSession = {};
+noSourceContract.apply(noSourceCtx.ctx);
+report.equal(
+  'a page with neither member reports no hook instead of a wrong one',
+  noSourceSandbox.context.window.__DSH_APPROVAL_CHIME__.pendingHook(),
+  null,
+);
+
+// THE RULE (the user's criterion): with the desktop mark present, a visible + focused window still
+// sends NOTHING and stays silent; only an away window acts. The mark is a report, not a licence.
+const markedRoute = nativeRoute();
+const markedFocused = nativeInstance({ route: markedRoute, hidden: false, hasFocus: true, platform: 'win32' });
+report.equal('the rule rig really is the desktop-marked one', markedFocused.diagnostics.platform(), 'win32');
+markedFocused.harness.pushPending([['s-marked', approvalInteraction('approval:marked', { sessionId: 's-marked' })]]);
+await settle();
+report.equal('desktop + in front: ZERO requests (the rule is not relaxed by the platform)', markedRoute.native().length, 0);
+report.equal('and no token was created either', markedFocused.diagnostics.nativeToast.state().tokens.length, 0);
+const markedAwayRoute = nativeRoute();
+const markedAway = nativeInstance({ route: markedAwayRoute, hidden: true, hasFocus: false, platform: 'win32' });
+markedAway.harness.pushPending([['s-away', approvalInteraction('approval:away', { sessionId: 's-away' })]]);
+await settle();
+report.equal('desktop + away: exactly one request (the desktop is not special-cased away)', markedAwayRoute.native().length, 1);
+for (const instance of [markedFocused, markedAway]) instance.dispose();
+report.ok('rev-29 left no unhandled rejection behind', rejections.seen.length === 0, rejections.seen.map(String).join(' | '));
 
 const noDocument = createClientSandbox({ document: false });
 const noDocumentContract = noDocument.loader.registrations[0].factory(noDocument.requireFn);

@@ -63,14 +63,14 @@ const HOST_PATH = join(PLUGIN, 'lib', 'index.js');
  */
 const FROZEN = {
   client: {
-    bytes: 179451,
-    sha256: '0BDAC98C5F9AB06F687A9856238EA7C7302A5E7F6CDEDD9CBBA6CDEBCEA49958',
+    bytes: 235306,
+    sha256: '389EEF36A6193E9E869066D13C5A700DAACDC8EE05D812E3F2E702004504D981',
   },
   host: {
-    bytes: 46638,
-    sha256: '03778391E15163487BC0F26082A73CBA15FAAF44CDC2CF93B0C185D75FB0B938',
+    bytes: 50959,
+    sha256: 'CAE655066F1CBB5EAD22E5030453505FCD32D3493A59B98EA733C906D151A0BF',
   },
-  revision: 'rev-24 · muting draws the slash instead of moving the bell',
+  revision: 'rev-29 · the desktop runtime and the bound pending hook are observable (the foreground rule is unchanged)',
   /** 任务书里写的 client 字节数（用于把「字面值过期」和「产品回归」分开）。 */
   briefClientBytes: 137331,
 };
@@ -545,6 +545,8 @@ function makeReact() {
 /* --------------------------------------------------------------- 插件 ctx 桩 */
 
 const NS = 'approval-chime';
+// 0.1.7 binds settings by the profile entry id, not by the old hand-picked namespace.
+const ENTRY_ID = 'dsh-approval-chime';
 
 function makeCtx() {
   const log = { slotInjects: [], registrations: [], boundNamespaces: [] };
@@ -582,10 +584,13 @@ function makeCtx() {
       subscribe: () => () => {},
       getSnapshot: () => ({ revision: 0, locale: 'zh' }),
     },
-    settingsScope: {
-      bind(spec) {
-        log.boundNamespaces.push(spec === undefined ? undefined : spec.namespace);
-        return scope;
+    // DSH 0.1.7 removed `settingsScope`; the bundle binds through
+    // `configForms.get(ENTRY_ID)`, which answers the same controller shape
+    // (getSnapshot / subscribe / set / unset) — lib/client.js:4351-4355.
+    configForms: {
+      get(namespace) {
+        (log.boundEntryIds = log.boundEntryIds ?? []).push(namespace);
+        return namespace === ENTRY_ID ? scope : null;
       },
     },
     uiSession: {
@@ -738,8 +743,8 @@ function inspect(source, { verbose, title, frozen }) {
     // 免得每个变异都顺带把指纹断言打红、把「抓到什么」这件事淹没。
     report.check('the mutation really rewrote the evaluated source', CLIENT_SOURCE !== readFileSync(CLIENT_PATH, 'utf8'), `${Buffer.byteLength(CLIENT_SOURCE, 'utf8')} vs ${FROZEN.client.bytes} bytes`);
   }
-  report.same('lib/index.js byte count is unchanged from rev-11 (this change is client-only)', hostBytes, FROZEN.host.bytes);
-  report.same('lib/index.js sha256 is unchanged from rev-11 (this change is client-only)', hostHash, FROZEN.host.sha256);
+  report.same('lib/index.js byte count is the rev-29 image (this change is client-only)', hostBytes, FROZEN.host.bytes);
+  report.same('lib/index.js sha256 is the rev-29 image (this change is client-only)', hostHash, FROZEN.host.sha256);
 
   const boot = loadClient(CLIENT_SOURCE);
   report.check('the bundle evaluated without a load error', boot.ledger.loadError === null, String(boot.ledger.loadError ?? ''));

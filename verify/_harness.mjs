@@ -448,7 +448,17 @@ export function parsedBody(response) {
 
 /* ------------------------------------------------------------------ fake ctx */
 
-/** The browser-side plugin context, stubbed down to the services this bundle uses. */
+/**
+ * The browser-side plugin context, stubbed down to the services this bundle uses.
+ *
+ * `options.pendingShape` picks which pending-interaction shape `uiSession` exposes (rev-27):
+ * `'legacy'` (the default) is the `pendingInteractions` observable of
+ * `Map<sessionId, interaction>` that DSH 0.1.7 REMOVED, and `'dsh017'` is the root slot hook
+ * `sessionStatus`, whose snapshot rows are
+ * `{running, pendingInteraction, completionUnread}`
+ * (dsh-client-ui-session/lib/client.js:148-156, 299-313, 346-352). Each shape is supplied
+ * ALONE, so a chime measured under one of them can only have bound that one.
+ */
 export function createClientCtx(options = {}) {
   const state = {
     slotRegistrations: [],
@@ -458,13 +468,15 @@ export function createClientCtx(options = {}) {
     locale: options.locale ?? 'zh',
     /** Bumped by `setLocale`, mirroring the host's locale snapshot revision. */
     localeRevision: 0,
-    boundSpecs: [],
+    formRequests: [],
     remoteSubscriptions: [],
     effects: [],
     setCalls: [],
     unsetCalls: [],
     scopeListeners: new Set(),
     pendingListeners: new Set(),
+    /** Which of the two shapes `uiSession` exposes (rev-27); see createClientCtx above. */
+    pendingShape: options.pendingShape ?? 'legacy',
     scopeSnapshot: {
       status: 'ready',
       value: { enabled: true, volume: 70, tone: 'chime' },
@@ -557,26 +569,44 @@ export function createClientCtx(options = {}) {
       subscribe: () => () => {},
       getSnapshot: () => ({ revision: state.localeRevision }),
     },
-    settingsScope: {
-      bind(spec) {
-        state.boundSpecs.push(spec);
+    /**
+     * The DSH 0.1.7 settings-form provider — the replacement for the removed
+     * `settingsScope`. `get(entryId)` returns the controller for one profile entry
+     * id, and the namespace the Host serves IS that entry id
+     * (dsh-settings:432,443 `ns: entry.options.id`), so `formRequests` records the
+     * exact string the bundle asked for.
+     */
+    configForms: {
+      get(entryId) {
+        state.formRequests.push(entryId);
         return scope;
       },
+      /** The shared describe face, as far as this bundle can observe it. */
       describe: () => ({
         getSnapshot: () => ({ view: { writable: true, namespaces: [] } }),
         subscribe: () => () => {},
         ensure() {},
       }),
     },
-    uiSession: {
-      pendingInteractions: {
-        getSnapshot: () => state.pendingSnapshot,
-        subscribe(listener) {
-          state.pendingListeners.add(listener);
-          return () => state.pendingListeners.delete(listener);
-        },
-      },
-    },
+    uiSession: (state.pendingShape === 'dsh017'
+      ? {
+          sessionStatus: {
+            getSnapshot: () => state.pendingSnapshot,
+            subscribe(listener) {
+              state.pendingListeners.add(listener);
+              return () => state.pendingListeners.delete(listener);
+            },
+          },
+        }
+      : {
+          pendingInteractions: {
+            getSnapshot: () => state.pendingSnapshot,
+            subscribe(listener) {
+              state.pendingListeners.add(listener);
+              return () => state.pendingListeners.delete(listener);
+            },
+          },
+        }),
     remote: {
       $on(event, listener) {
         state.remoteSubscriptions.push({ event, listener });
@@ -588,7 +618,12 @@ export function createClientCtx(options = {}) {
 
   const pushPending = (entries) => {
     const next = new Map();
-    for (const [sessionId, interaction] of entries) next.set(sessionId, interaction);
+    for (const [sessionId, interaction] of entries) {
+      // The 0.1.7 snapshot carries a ROW per session rather than the interaction itself, and the
+      // row object is rebuilt on every publish — so a diff keyed on the row instead of on the
+      // interaction's `key` re-chimes. The rev-27 section drives exactly that.
+      next.set(sessionId, state.pendingShape === 'dsh017' ? { running: false, pendingInteraction: interaction, completionUnread: false } : interaction);
+    }
     state.pendingSnapshot = next;
     for (const listener of [...state.pendingListeners]) listener();
     return next;

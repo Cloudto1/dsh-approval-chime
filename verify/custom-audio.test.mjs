@@ -220,10 +220,26 @@ report.equal('and says nothing was removed', JSON.parse(againResponse.state.body
 
 report.section('the tone schema stays closed while admitting imported ids');
 
-const loaded = plugin.loadSchemastery({});
-const schema = plugin.buildSchema(loaded.z);
-report.equal('a built-in tone still validates', schema({ tone: 'bell' }).tone, 'bell');
-report.equal('an imported tone validates', schema({ tone: `custom:${ID_A}` }).tone, `custom:${ID_A}`);
+// REBUILT 2026-10-02: the rev-26/28 settings migration DELETED `loadSchemastery`
+// (and `schemaAnchors`/`schemaCandidates`), so this suite can no longer re-derive a
+// schema at runtime — and it must not want to: the form is now a module-level export,
+// and testing the SHIPPED object is strictly stronger, because it is the same object
+// `settings.describe()` serves to the browser. The original bytes of this file were
+// destroyed by the 2026-10-01 `robocopy /MIR` write-through (see CHANGELOG.md
+// 「事故补记 · 2026-10-01」); this section was re-authored against the surviving
+// rev-29 output log `.scratch/r29-release/suite-custom-audio.txt`.
+const schema = plugin.Config;
+report.check(
+  'the tone schema under test IS the shipped settings form (Config), not a re-derivation',
+  schema?.type === 'object' && typeof schema.toJSON === 'function',
+  `type=${schema?.type} toJSON=${typeof schema?.toJSON}`,
+);
+// Every field of the rev-29 form is `.volatile()`, so a parsed field is a live
+// REFERENCE, not a raw value — `.get()` at use time is the documented contract
+// (lib/index.js explains why: a volatile-only edit is committed into the running
+// fiber instead of re-applying the plugin, so a cached value would go stale).
+report.equal('a built-in tone still validates', schema({ tone: 'bell' }).tone.get(), 'bell');
+report.equal('an imported tone validates', schema({ tone: `custom:${ID_A}` }).tone.get(), `custom:${ID_A}`);
 let garbageError = null;
 try {
   schema({ tone: 'custom:not-a-uuid' });
@@ -231,10 +247,10 @@ try {
   garbageError = error.message;
 }
 report.ok('a garbage custom id is refused', garbageError !== null, garbageError ?? 'no error');
-report.deepEqual('an empty roster is the default', schema({}).custom, []);
+report.deepEqual('an empty roster is the default', schema({}).custom.get(), []);
 report.deepEqual(
   'the roster keeps its order',
-  schema({ custom: [{ id: ID_A, name: 'a.mp3' }, { id: ID_B, name: 'b.wav' }] }).custom,
+  schema({ custom: [{ id: ID_A, name: 'a.mp3' }, { id: ID_B, name: 'b.wav' }] }).custom.get(),
   [{ id: ID_A, name: 'a.mp3' }, { id: ID_B, name: 'b.wav' }],
 );
 
@@ -264,7 +280,7 @@ const harness = createClientCtx({
 contract.apply(harness.ctx);
 const diagnostics = sandbox.context.window.__DSH_APPROVAL_CHIME__;
 report.ok('the diagnostics surface is installed', diagnostics !== undefined && diagnostics !== null);
-report.ok('the revision names this build', String(diagnostics.revision).includes('rev-24'), String(diagnostics.revision));
+report.ok('the revision names this build', String(diagnostics.revision).includes('rev-29'), String(diagnostics.revision));
 report.deepEqual(
   'option order is imports (in order, deduplicated) then built-ins',
   diagnostics.toneOptions(),

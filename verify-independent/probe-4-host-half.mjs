@@ -64,30 +64,42 @@ if (resolvedFromLib !== null) {
   report.same('no transpiled default wrapper is needed', loadedViaRequire.default, undefined);
 }
 
-const anchors = plugin.schemaAnchors({});
-report.same('the first anchor is this package (the junction lives there)', anchors[0], pathToFileURL(HOST_PATH).href);
-const candidates = plugin.schemaCandidates({});
-report.same('the first candidate resolved through the junction anchor', candidates.candidates[0]?.anchor, pathToFileURL(HOST_PATH).href);
-report.same('no resolution failure was recorded with the junction present', candidates.failures.length, 0);
-report.note('resolved candidates', candidates.candidates);
-report.note('resolution failures', candidates.failures);
-
-const syncLoad = plugin.loadSchemastery({});
-report.same('the synchronous route loads a schema factory', typeof syncLoad.z, 'function');
-report.same('the synchronous route used require()', syncLoad.mode, 'require');
-const asyncLoad = await plugin.loadSchemasteryAsync({});
-report.same('the ESM fallback route agrees', typeof asyncLoad.z, 'function');
+// rev-26 (the settings-model migration) DELETED the four schema helpers this probe
+// used to call: the plugin no longer resolves the schema package itself, `dsh-settings`
+// does. What survives is what this probe now pins.
+const REMOVED_HELPERS = ['schemaAnchors', 'schemaCandidates', 'loadSchemastery', 'loadSchemasteryAsync'];
+report.check(
+  'the four schema helpers rev-24 exported are really gone (rev-26 settings-model migration)',
+  REMOVED_HELPERS.every((name) => plugin[name] === undefined),
+  REMOVED_HELPERS.map((name) => name + '=' + typeof plugin[name]).join(' '),
+);
+report.same('the host half still exports the schema factory', typeof plugin.Config, 'function');
+report.same(
+  'whose dict carries exactly the five shipped fields',
+  Object.keys(plugin.Config?.dict ?? {}).sort().join(','),
+  'custom,enabled,nativeToast,tone,volume',
+);
+report.same('and the entry still exports apply() for the cordis loader', typeof plugin.apply, 'function');
+report.same('the entry injects only the settings service (the browser half injects the slots)', plugin.inject.join(','), 'settings');
 
 /* ------------------------------------------------------------ (b) normal path */
 
 report.group('b. the normal registration path');
 
 const calls = [];
+/** Records every `settings` member the entry touches — the deleted `register()` included. */
 const okCtx = {
   logger: { info: (line) => calls.push(['info', line]), warn: (line) => calls.push(['warn', line]), error: () => {}, debug: () => {} },
   settings: {
-    describe: () => [],
-    register(ns, schema, options) {
+    describe: () => {
+      calls.push(['describe']);
+      return [];
+    },
+    configure: (...args) => {
+      calls.push(['configure', ...args]);
+      return { get: () => ({}), watch: () => () => {}, update: () => {}, replace: () => {} };
+    },
+    register: (ns, schema, options) => {
       calls.push(['register', ns, options]);
       return { get: () => ({}), watch: () => () => {}, update: () => {}, replace: () => {} };
     },
@@ -101,28 +113,33 @@ try {
   normalThrew = String(error.message);
 }
 report.same('the normal path does not throw', normalThrew, null);
-report.same('exactly one register() call', calls.filter((entry) => entry[0] === 'register').length, 1);
-const registered = calls.find((entry) => entry[0] === 'register');
-report.same('the registered namespace', registered?.[1], NS);
-report.deep('the registration options', registered?.[2], { applies: 'live' });
+report.same(
+  'apply() never calls the DELETED settings.register() (0.1.7 removed it)',
+  calls.filter((entry) => entry[0] === 'register').length,
+  0,
+);
+report.same(
+  'and it never calls configure() either — the module-level Config is served by describe()',
+  calls.filter((entry) => entry[0] === 'configure').length,
+  0,
+);
 report.same('the module injects only the settings service', JSON.stringify(plugin.inject), JSON.stringify(['settings']));
-report.same('the namespace matches the Host pattern', /^[a-z][a-z0-9-]*$/.test(NS), true);
-report.same('the namespace matches dsh-settings:82-86 exactly', /^[a-z][a-z0-9-]*$/.test(plugin.NS), true);
+report.same('the settings namespace is the profile entry id', plugin.SETTINGS_NS, 'dsh-approval-chime');
+report.same('the namespace matches the Host pattern', /^[a-z][a-z0-9-]*$/.test(plugin.SETTINGS_NS), true);
+report.same('the browser-side id keeps its own name', plugin.NS, 'approval-chime');
+report.same('the browser-side id matches dsh-settings:82-86 too', /^[a-z][a-z0-9-]*$/.test(plugin.NS), true);
 
-const schema = plugin.buildSchema(syncLoad.z);
-report.same('the schema is an object schema', schema.type, 'object');
-/* rev-4 added the imported-tone roster, so the namespace's defaults carry `custom: []`
- * (lib/index.js DEFAULTS). The four documented keys are still exactly these. */
-report.deep('the schema resolves the documented defaults (rev-4 adds the custom roster)', schema({}), { enabled: true, volume: 70, tone: 'chime', custom: [] });
-report.deep('the exported DEFAULTS match (rev-4 adds the custom roster)', { ...plugin.DEFAULTS }, { enabled: true, volume: 70, tone: 'chime', custom: [] });
+// The shipped form. `Config` is the module-level schema the Host serves; every field is
+// volatile (settings.describe() drops non-volatile entries, see lib/index.js:243).
+report.same('the shipped form carries exactly the five fields', Object.keys(plugin.Config.dict).sort().join(','), 'custom,enabled,nativeToast,tone,volume');
+report.deep('the exported DEFAULTS carry the rev-25 switch as well', { ...plugin.DEFAULTS }, { enabled: true, volume: 70, tone: 'chime', custom: [], nativeToast: false });
 report.deep('the exported TONES match', [...plugin.TONES], ['chime', 'bell', 'beep']);
-const envelope = schema.toJSON();
-report.check('the schema exposes the describe() envelope', Array.isArray(envelope.refs) === false && typeof envelope === 'object' && envelope.refs !== undefined, JSON.stringify(envelope).slice(0, 200));
+report.deep('the form resolves the documented defaults', plugin.configReader(plugin.Config({})).get(), { enabled: true, volume: 70, tone: 'chime', custom: [], nativeToast: false });
 report.check(
-  'the schema rejects an out-of-range volume',
+  'the form rejects an out-of-range volume',
   (() => {
     try {
-      schema({ volume: 101 });
+      plugin.Config({ volume: 101 });
       return false;
     } catch {
       return true;
@@ -130,10 +147,10 @@ report.check(
   })(),
 );
 report.check(
-  'the schema rejects an unknown tone',
+  'the form rejects an unknown tone',
   (() => {
     try {
-      schema({ tone: 'gong' });
+      plugin.Config({ tone: 'gong' });
       return false;
     } catch {
       return true;
@@ -144,22 +161,26 @@ report.check(
 report.group('b2. the module has no static dependency that could break the loader entry');
 const topLevelImports = HOST_SOURCE.split('\n').filter((line) => /^import\s/.test(line));
 /* rev-4 added the audio store (node:fs/promises, node:crypto, node:path's extname) and
- * rev-10 the per-session table (node:url's fileURLToPath); every one of them is still a
- * node: builtin — schemastery alone stays behind the lazy createRequire in `resolver`. */
-report.deep('every top-level import is a node: builtin', topLevelImports.map((line) => line.trim()), [
+ * rev-10 the per-session table (node:url's fileURLToPath); rev-26 dropped the lazy
+ * createRequire and made the schema package a STATIC import. The builtins are listed
+ * verbatim, and the one non-builtin is pinned as such — see the next check. */
+report.deep('every top-level import is a node: builtin', topLevelImports.filter((line) => /from 'node:/.test(line)).map((line) => line.trim()), [
   "import { randomUUID } from 'node:crypto';",
   "import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';",
-  "import { createRequire } from 'node:module';",
   "import { homedir } from 'node:os';",
   "import { extname, join } from 'node:path';",
-  "import { fileURLToPath, pathToFileURL } from 'node:url';",
+  "import { fileURLToPath } from 'node:url';",
 ]);
-report.check(
-  'every top-level import specifier is a node: builtin (re-derived, not just listed)',
-  topLevelImports.every((line) => /from 'node:[a-z/]+';/.test(line)),
-  topLevelImports.map((line) => line.trim()).join(' | '),
+report.deep(
+  'exactly ONE top-level import is not a node: builtin — and it is the schema package',
+  topLevelImports.filter((line) => !/from 'node:/.test(line)).map((line) => line.trim()),
+  ["import z from '@deepseek-ai/schemastery';"],
 );
-report.check('no static schemastery import', !/^import\s+[^;]*schemastery/m.test(HOST_SOURCE), 'a missing link cannot break the boot');
+report.check(
+  'the static schema import is why the plugin-local junction is a hard prerequisite (rev-24 said the opposite)',
+  /^import z from '@deepseek-ai\/schemastery';$/m.test(HOST_SOURCE),
+  'the lazy createRequire route was removed by rev-26',
+);
 
 /* ------------------------------------------------------- (c) degradation matrix */
 
@@ -256,58 +277,49 @@ try {
   report.same('negative control: the copy cannot resolve the schema package', copyResolved, null);
   report.note('negative-control error', copyError);
 
-  const copyAnchors = plugin.schemaAnchors({ baseUrl: pathToFileURL(join(root, 'nowhere', 'package.json')).href });
+  // Contrast: the ORIGINAL module resolves the schema package through its junction
+  // (asserted above), while the copy — same source, no junction — cannot.
   report.check(
-    'the ORIGINAL module still has the junction on its first anchor (contrast)',
-    copyAnchors[0].includes('dsh-approval-chime'),
-    copyAnchors[0],
+    'the ORIGINAL module resolves the schema package through its junction (contrast)',
+    typeof resolvedFromLib === 'string' && resolvedFromLib.includes('schemastery'),
+    String(resolvedFromLib),
   );
 
   const previousHome = process.env.DSH_HOME;
   process.env.DSH_HOME = emptyHome;
   try {
-    const copy = await import(pathToFileURL(copyPath).href);
-    const copyAnchorList = copy.schemaAnchors({});
-    report.check(
-      'negative control: no anchor of the copy points at the plugin junction',
-      copyAnchorList.every((anchor) => !anchor.includes('dsh-approval-chime')),
-      copyAnchorList.join(' | '),
-    );
-    const copyCandidates = copy.schemaCandidates({});
-    report.same('the copy resolves nothing synchronously', copyCandidates.candidates.length, 0);
-    report.check('and every anchor records a failure', copyCandidates.failures.length === copy.schemaAnchors({}).length, `${copyCandidates.failures.length} failure(s)`);
-    report.note('copy anchors', copy.schemaAnchors({}));
-    report.note('copy resolution failures', copyCandidates.failures);
-
-    const lines = [];
-    const registrations = [];
-    let copyThrew = null;
+    let copyState;
     try {
-      copy.apply({
-        logger: quietLogger(lines),
-        settings: {
-          describe: () => [],
-          register(ns) {
-            registrations.push(ns);
-          },
-        },
-      });
+      const copy = await import(pathToFileURL(copyPath).href);
+      copyState = {
+        loaded: true,
+        configType: typeof copy.Config,
+        dictFields: copy.Config?.dict === undefined ? null : Object.keys(copy.Config.dict).length,
+      };
     } catch (error) {
-      copyThrew = String(error.message);
+      copyState = { loaded: false, error: String(error.message).split('\n')[0] };
     }
-    report.same('the degraded copy does not throw', copyThrew, null);
-    report.same('nothing was registered', registrations.length, 0);
-    await settle(12);
     report.check(
-      'the degradation is reported through the logger',
-      lines.some((line) => line.includes('not resolvable synchronously')) && lines.some((line) => line.includes('is not registered')),
-      lines.join(' | ').slice(0, 400),
+      'negative control: without the junction the copy cannot build the shipped schema factory',
+      copyState.loaded === false || copyState.configType !== 'function' || copyState.dictFields === null,
+      JSON.stringify(copyState),
     );
-    report.same('the asynchronous retry did not leak an unhandled rejection', rejections.seen.length, 0);
+    report.note('copy module state without the junction', copyState);
 
-    const asyncStub = await copy.loadSchemasteryAsync({});
-    report.same('the async route resolves to null instead of rejecting', asyncStub.z, null);
-    report.check('the async route reports why', asyncStub.failures.length > 0, `${asyncStub.failures.length} failure(s)`);
+    // rev-24 could load this copy and watch it degrade gracefully (the schema package was
+    // lazy). rev-29 cannot: the copy is the same source with no junction, so its static
+    // schema import fails outright — which is exactly why the junction is a prerequisite.
+    report.check(
+      'negative control: the copy cannot even be imported (the schema import is static now)',
+      copyState.loaded === false,
+      JSON.stringify(copyState),
+    );
+    report.check(
+      'and the failure names the missing link, so a missing junction is loud, not silent',
+      /Cannot find (package|module) '@deepseek-ai\/schemastery'/.test(copyState.error ?? ''),
+      copyState.error ?? '',
+    );
+    report.same('the failed import leaked no unhandled rejection', rejections.seen.length, 0);
   } finally {
     if (previousHome === undefined) delete process.env.DSH_HOME;
     else process.env.DSH_HOME = previousHome;

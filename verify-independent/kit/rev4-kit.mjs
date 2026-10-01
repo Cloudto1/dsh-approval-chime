@@ -650,11 +650,12 @@ export function createClientHarness(sandbox, options = {}) {
   };
 
   const ctx = {
-    settingsScope: {
-      bind(request) {
-        state.boundRequest = request;
-        if (options.bindThrows === true) throw new Error('bind refused');
-        return scope;
+    // DSH 0.1.7 removed `settingsScope`; the bundle binds through
+    // `configForms.get(ENTRY_ID)`, which answers the same controller shape
+    // (getSnapshot / subscribe / set / unset) — lib/client.js:4351-4355.
+    configForms: {
+      get(namespace) {
+        return namespace === 'dsh-approval-chime' ? scope : null;
       },
     },
     slots: {

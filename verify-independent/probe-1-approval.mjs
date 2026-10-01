@@ -66,7 +66,7 @@ const bundle = loadBundle();
 report.same('the file loads as a classic script', bundle.loadError, null);
 report.same('one module registration', bundle.registrations.length, 1);
 report.same('module id equals the package name', bundle.registration === null ? null : bundle.registration.id, 'dsh-approval-chime');
-report.deep('inject[] has no remote service', [...bundle.contract.inject].sort(), ['locale', 'settingsScope', 'slots', 'uiSession']);
+report.deep('inject[] has no remote service', [...bundle.contract.inject].sort(), ['configForms', 'locale', 'slots', 'uiSession']);
 report.deep('the bundle required only react', bundle.ledger.requires, ['react']);
 
 /* ------------------------------------------------- (2) real-cordis ground truth */
@@ -226,7 +226,7 @@ hostileHarness.api.pendingThrows = false;
 
 // (d) the settings scope refuses to be read while an approval arrives.
 hostileHarness.api.scopeThrows = true;
-attempt('settingsScope.getSnapshot() throws during a chime', () => hostileHarness.api.publishRaw([['session-1', approval('approval:21')]]));
+attempt('configForms.getSnapshot() throws during a chime', () => hostileHarness.api.publishRaw([['session-1', approval('approval:21')]]));
 hostileHarness.api.scopeThrows = false;
 
 // (e) the browser refuses to build audio at all.

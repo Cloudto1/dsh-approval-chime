@@ -234,15 +234,17 @@ for (const [label, pattern] of sourceChecks) {
  * route constants, and that those constants are same-origin paths. Measured on the
  * shipped source, so a new call site or a hardcoded host fails here. */
 const fetchTargets = [...CLIENT_SOURCE.matchAll(/\bfetch\s*\(\s*([A-Za-z_$][\w$]*)/g)].map((match) => match[1]);
-report.deep('every fetch( call passes one of the bundle\'s own route constants', [...new Set(fetchTargets)].sort(), ['AUDIO_ROUTE', 'SESSIONS_ROUTE']);
+report.deep('every fetch( call passes one of the bundle\'s own route constants', [...new Set(fetchTargets)].sort(), ['AUDIO_ROUTE', 'NATIVE_TOAST_ROUTE', 'SESSIONS_ROUTE']);
 report.check(
-  'the fetch( call sites still number the five the rev-24 source has (audio×3, sessions×2)',
-  fetchTargets.length === 5,
+  'the fetch( call sites still number the six the rev-29 source has (audio×3, sessions×2, native-toast×1)',
+  fetchTargets.length === 6,
   `call site(s) at line(s) ${[...CLIENT_SOURCE.matchAll(/\bfetch\s*\(/g)].map((match) => CLIENT_SOURCE.slice(0, match.index).split('\n').length).join(',')}`,
 );
 report.check(
-  'both route constants are same-origin /api/approval-chime paths',
-  /var AUDIO_ROUTE = '\/api\/approval-chime\/audio';/.test(CLIENT_SOURCE) && /var SESSIONS_ROUTE = '\/api\/approval-chime\/sessions';/.test(CLIENT_SOURCE),
+  'every route constant is a same-origin /api/approval-chime path',
+  /var AUDIO_ROUTE = '\/api\/approval-chime\/audio';/.test(CLIENT_SOURCE)
+    && /var SESSIONS_ROUTE = '\/api\/approval-chime\/sessions';/.test(CLIENT_SOURCE)
+    && /var NATIVE_TOAST_ROUTE = '\/api\/approval-chime\/native-toast';/.test(CLIENT_SOURCE),
   'lib/client.js:172 / :180',
 );
 

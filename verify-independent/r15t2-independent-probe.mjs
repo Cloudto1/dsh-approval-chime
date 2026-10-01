@@ -54,11 +54,11 @@ const CLIENT_PATH = join(LIB_DIR, 'client.js');
 const VERIFY_DIR = join(PLUGIN_DIR, 'verify');
 const RAW_DIR = join(HERE, '_raw');
 
-/** The frozen rev-24 bytes this probe is anchored to (t7 close-out). */
+/** The frozen rev-29 bytes this probe is anchored to (t7 close-out; re-anchored by the 2026-10 rebuild). */
 const FROZEN = {
-  sha256: '0BDAC98C5F9AB06F687A9856238EA7C7302A5E7F6CDEDD9CBBA6CDEBCEA49958',
-  bytes: 179451,
-  revision: 'rev-24 · muting draws the slash instead of moving the bell',
+  sha256: '389EEF36A6193E9E869066D13C5A700DAACDC8EE05D812E3F2E702004504D981',
+  bytes: 235306,
+  revision: 'rev-29 · the desktop runtime and the bound pending hook are observable (the foreground rule is unchanged)',
 };
 
 const SESSIONS_ROUTE = '/api/approval-chime/sessions';
@@ -113,7 +113,7 @@ const REJECT_REASON = 'stub network down: the read was refused';
 const THROW_REASON = 'stub transport threw before the request left';
 const BAD_JSON_REASON = 'the Host refused the per-session request (200)';
 
-const AUTHOR = "the version of the bundle this repo ships as rev-24";
+const AUTHOR = "the version of the bundle this repo ships as rev-29";
 void AUTHOR; // kept only so the anchor comment above reads naturally
 
 /* ------------------------------------------------------------------ utilities */
@@ -662,6 +662,19 @@ function createWorld(sourceText) {
       },
       describe: () => ({ getSnapshot: () => ({ view: { writable: true, namespaces: [] } }), subscribe: () => () => {}, ensure() {} }),
     },
+    // DSH 0.1.7 binds settings through configForms.get(entryId); a ctx without it
+    // makes the bundle warn, which this probe (rightly) treats as a red.
+    configForms: {
+      get(namespace) {
+        if (namespace !== 'dsh-approval-chime') return null;
+        return {
+          getSnapshot: () => ({ status: 'ready', value: { enabled: true, volume: 70, tone: 'chime', custom: [], nativeToast: false }, base: {}, user: {}, revision: 1, writable: true, mode: 'host' }),
+          subscribe: () => () => {},
+          set: () => Promise.resolve(),
+          unset: () => Promise.resolve(),
+        };
+      },
+    },
     uiSession: {
       pendingInteractions: {
         getSnapshot: () => state.pendingSnapshot,
@@ -1091,7 +1104,7 @@ async function main() {
   const passed = report.checks.length - red.length;
 
   if (!mutantMode) {
-    console.log(`\n=== shipped rev-24 run: ${passed}/${report.checks.length} checks passed ===`);
+    console.log(`\n=== shipped rev-29 run: ${passed}/${report.checks.length} checks passed ===`);
     for (const name of red) console.log(`  RED: ${name}`);
     console.log(`exit ${red.length === 0 ? 0 : 1}`);
     process.exitCode = red.length === 0 ? 0 : 1;

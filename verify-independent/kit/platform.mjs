@@ -548,7 +548,7 @@ export function makeCtx(options = {}) {
 
   const scope = {
     getSnapshot() {
-      if (api.scopeThrows) throw new Error('probe: settingsScope.getSnapshot refused');
+      if (api.scopeThrows) throw new Error('probe: configForms form read refused');
       return {
         status: scopeState.status,
         value: scopeState.value === undefined ? undefined : { ...scopeState.value },
@@ -662,10 +662,13 @@ export function makeCtx(options = {}) {
       subscribe: () => () => {},
       getSnapshot: () => ({ revision: 0 }),
     },
-    settingsScope: {
-      bind(spec) {
-        log.boundSpecs.push(spec);
-        return scope;
+    // DSH 0.1.7 removed `settingsScope`; the bundle binds through
+    // `configForms.get(ENTRY_ID)`, which answers the same controller shape
+    // (getSnapshot / subscribe / set / unset) — lib/client.js:4351-4355.
+    configForms: {
+      get(namespace) {
+        log.boundSpecs.push(namespace);
+        return namespace === 'dsh-approval-chime' ? scope : null;
       },
     },
     uiSession,
@@ -680,7 +683,9 @@ export function makeCtx(options = {}) {
   };
 
   for (const service of options.dropServices === undefined ? [] : options.dropServices) delete ctx[service];
-  if (options.settingsScope === 'throws') ctx.settingsScope = { bind() { throw new Error('probe: bind refused'); } };
+  // The option key stays `settingsScope` so existing callers keep working; what it now
+  // removes is the service the rev-29 bundle actually asks for.
+  if (options.settingsScope === 'throws') ctx.configForms = { get() { throw new Error('probe: bind refused'); } };
   if (options.uiSession === 'throws') {
     Object.defineProperty(ctx, 'uiSession', {
       get() {
