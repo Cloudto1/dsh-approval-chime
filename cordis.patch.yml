@@ -7,8 +7,11 @@
 #
 # Do NOT insert the same id again from the profile's own cordis.patch.yml:
 # every layer's patches are merged into one array and handed to the root group
-# in a single update, and a duplicate id throws
-# `duplicate loader entry id: dsh-approval-chime` — which breaks the boot.
+# in a single update, and the rows are keyed BY ID — so a later layer's row
+# silently REPLACES this one and the insert here never takes effect.
+# (DSH 0.1.7 changed this: through 0.1.6 a duplicate id threw
+# `duplicate loader entry id: dsh-approval-chime` and broke the boot.
+# Same advice, different reason — see docs/契约调研.md 勘误 rev-28.)
 # To disable this plugin temporarily, patch by id instead:
 #   - id: dsh-approval-chime
 #     disabled: true

@@ -26,11 +26,346 @@ rev-12…rev-24 累积到这里（其中 rev-15 是一次数据丢失缺陷修�
 > **rev-21 把分区页右上角的构建戳从描述整串改成只印版本 id**，
 > **rev-22 给会话头部的铃铛加一次「响」（点击切换本会话提示音时摇一下）**，
 > **rev-23 把摇动换成「倾一次就落定」（换掉四次摆动，并点名拒绝 ease-in-out）**，
-> **rev-24 把铃铛的动作整段删除 —— 静音改成「把斜杠从左上画到右下」、蓝底同一时钟变暗（240ms）**。
-> 每次改动后都复跑了全部 harness：现为 4 个文件 / **663 项断言全绿（124 + 442 + 22 + 75）**，各 exit 0；
+> **rev-24 把铃铛的动作整段删除 —— 静音改成「把斜杠从左上画到右下」、蓝底同一时钟变暗（240ms）**，
+> **rev-25 给「待审批」加一条 Windows 原生通知（带「接受 / 拒绝」两个按钮，点按钮等价于在网页里点那张卡；
+> 默认关闭、可卸载、fail-closed，不引 npm 依赖、不编译原生模块）**，
+> **rev-29 让插件在桌面端（DSH 0.2.0-rc.2 / Electron）上可观测地跑起来 —— 触发判据一行未改**。
+> 每次改动后都复跑了全部 harness：**rev-29 起重跑 6 个文件 / 1269 项断言**（host-half 126 +
+> client-half 639 + waterfall 22 + custom-audio 76 + native-toast 377 + settings-model 29），逐个 exit 0；
+> 其中 `host-half 126 / native-toast 377 / waterfall 22` 是 rev-27/rev-28 的既有基线，本轮只有
+> `client-half` 626 → 639 与 `custom-audio` 的戳在动；
 > 另有**独立验证层**（`verify-independent/`，另一套探针与变异表，与上面四套不共享代码）——
 > 早先的读数是 6 个探针 / **402 项**，加**重基线后全绿的 10 个遗留探针 / 820 项**；
 > **逐轮的当值读数与残留红项见 `docs/变异覆盖与残留红.md`**，本节每个 rev 小节也各自记下当轮的结论。
+
+## 事故补记 · 2026-10-01：一次 `robocopy /MIR` 沿 junction 写穿，工作树被清空后修复（**不是 rev**：`lib/**` 与任何判据均未改动）
+
+**发生**：2026-10-01 00:2x。为了「安全地跑 `probe-22`」而对 `.scratch\r29-verify` 做 `robocopy /MIR` 备份/还原，
+**没有加 `/XJ`**；robocopy 于是**跟随该目录里的 junction** 写进了**真实插件目录**，并按 `/MIR` 的 purge 规则
+（目标有、源没有就删）删除了 `lib\`、`verify\`、`verify-independent\`、`docs\`、`tools\`。
+`git status --short` 当时显示 **106 个已跟踪文件被删除**。**代价换来的收益是零** —— `probe-22` 在沙箱里 10 分钟无输出、无写入。
+
+**已修复**（已由独立只读验证复核）：
+
+* **104 个已跟踪文件**由 `git checkout HEAD -- <路径>` **逐路径**还原（**不是**整树重建）：
+  `docs` 17 + `verify-independent` 82 + `verify` 5。106 的其余 2 个是 `lib/client.js`、`lib/index.js`，
+  它们先由备份恢复、故当时在 `git status` 里显示为 ` M` 而不是 ` D`。
+  `tools\` **在 HEAD 里没有任何跟踪文件**（`git checkout HEAD -- tools` 报 `pathspec ... did not match`），它不在那 106 个之内。
+* 其中 **2 个文件改用 rev-29 的逐字节副本覆盖**（来源 `.scratch\r29-review\rig\`，覆盖 `git` 还原出来的 rev-24 版）：
+  `verify/_harness.mjs` **26777 B / `EC74EBB6A326389A`**、`verify/client-half.test.mjs` **178293 B / `B7A702DFF975B744`**。
+* `lib\` 4 文件由备份的**物化副本**恢复，哈希与 canonical 冻结表**逐项一致**：
+  `client.js` 235306 / `389EEF36…`、`index.js` 50959 / `CAE65506…`、`native-toast.js` 28334 / `7F66E172…`、
+  `native-bridge.js` 25816 / `CA5FB926…` ⇒ **产品代码未丢失**，桌面端与网页端两处 junction 都指向的这个目录可正常加载。
+
+**永久损失（如实登记；下列每一项都**没有**被恢复，也没有伪造替代品）**：
+
+* `verify/native-toast.test.mjs` —— 94698 B / `38B92F97EF4628FD…`（377 项断言）
+* `verify/settings-model.test.mjs` —— 9856 B / `D50C601FEF2BE60D…`（29 项断言）
+* `verify-independent/probe-21-native-toast.mjs` —— 最终修订丢失（更早修订见下「仓库外保全位置」）
+* `docs/` 的 **11 个文件**（事故前已存在于磁盘、现已无）：`native-toast-人工验收.md`(29541 B)、
+  `native-toast-接口冻结.md`（事故前为 **65195 B /
+  `2c1e03911c5fa644693f3d12791e703629d09ae590b7c9278f683d576fee63d5`** —— 注意**不是** 63257 B，
+  63257 是该页 2026-09-26 那次改动**之前**的值）、`rev25-安装器返修.md`(27935 B)、
+  `rev25-客户端poll失败语义返修.md`(12045 B)、`rev25-客户端半实测记录.md`(13211 B)、`rev25-收尾清单.md`(73545 B)、
+  `rev25-暂停说明.md`(8145 B)、`rev25-通知开关分组.md`(10984 B)、`r29-桌面端-交付与验收.md`、
+  `r29-桌面端契约-宿主.md`、`r29-桌面端契约-浏览器.md`
+* `docs/` 中 **4 个已跟踪文档的 rev-25..29 增量**（现在恢复出来的是 rev-24 版）：
+  `变异覆盖与残留红.md` 412583 → 353732、`契约调研.md` 101559 → 84333、`挂载与验收.md` 45941 → 42489、
+  `交付说明与验收手册.md` 68330 → 57127（左侧为事故前实测尺寸）
+* `verify-independent/_raw/` —— **3324 个文件**（属 `.gitignore`，git 从未保存）；这是它当晚**第二次**受损（第一次见下一条）
+* `tools/` —— 未被 `.gitignore` 覆盖，但 **git 从未提交过它** ⇒ 内容**不可知、不可枚举**，连损失清单都列不出来
+
+**唯一救回的一件**：`verify-independent/probe-22-desktop-020.mjs` —— **49811 B /
+`FDFAB5F816B0AA14AC1222518A1E9D5F94ED7854ECE47732F7A31BA5C0886F6C`**，
+从 `.scratch\r29-verify\f3-empty-run\…` 取回，并与备份里另两份副本**交叉核对哈希一致**。
+
+**机制结论（最容易骗过自己的那一条）**：`git status` 的 ` D` = 0 **只证明已跟踪的删除已还原**。
+这次还删掉了一批 **rev-24 之后新增、从未提交**的文件 —— 它们被删时**不产生 ` D`**，
+因此**完全不受 ` D` = 0 这个判据覆盖**。上面损失里的绝大部分（11 个 docs、2 个套件、`probe-21`、`_raw`、`tools`）都属于这一类。
+⇒ 读本条时**不要**把「` D` = 0」读成「仓库已恢复到事故前状态」。
+
+**规则（写给后续的自己和派单者）**：
+① **禁止对含 junction / 符号链接的目录树使用 `robocopy /MIR`** —— 必须加 `/XJ`；不确定就**不要**用 `/MIR`。
+② **备份体积异常膨胀就是危险信号**：5.1 MB 的目录备份出 **1.13 GB / 37,871 文件**时应当**停下来查原因**，
+而不是当成「备份更完整」继续。
+③ 破坏性操作前先查链接：`Get-ChildItem -Recurse -Directory -Attributes ReparsePoint` 一条命令就能列出全部重解析点。
+
+**仓库外保全位置（勿删）**：
+
+* `.scratch\r29-review\rig\` —— 保住了 `lib\` 4 文件与上面 2 个 verify 文件的**逐字节副本**（本次修复的关键来源）
+* `dsh-diag\_probe22-restore\` —— `lib\` 的**唯一来源**（约 1.13 GB，事故备份的副产物）
+* `dsh-diag\preserved-r29-release-archives\` —— 9 份 `.before-r29` 归档（含 `probe-21` 的**两份**更早修订）
+  与 `freeze-page-before.md`（冻结页 63257 B 的那一版）。**这些都不是丢失的那一版字节**，**不得冒充**丢失版本。
+  其中 **`run-r13.ps1` 已被采用**：用 rev-28 时代（最后一个已知全绿）的修订**带来源标签**替换了本仓库工作区里的 rev-24 版
+  （见 `verify-independent\README-recovered-runner.md` 与脚本顶部标签块）；**其余仍只作参照** —— `probe-21` 的任何修订都**未**用于覆盖仓库文件。
+
+**详细存档**：`dsh-diag\incident-2026-10-01-robocopy-mir-destroyed-chime-repo.md`（事故存证）、
+`dsh-diag\loss-inventory-2026-10-01.md`（**未跟踪新增文件**损失清单：逐项路径 / 事故前尺寸 / 是否有副本 / 结论 / 依据）。
+
+## 归档事故 · `verify-independent/_raw/` 的原始版本已无法指认（**不是 rev**：`lib/**` 与任何判据均未改动）
+
+**发生**：2026-09-29 17:18:55–17:20:46。一个由调度方派出的子代理**直接执行 `node probe-*.mjs`**，
+**绕过了 `run-rNN.ps1` 的「输出文件必须带 `rNN-` 轮次前缀」纪律**，把 **17 个已归档文件就地覆盖**
+（含 `r25-evidence/probe-21-evidence.json`）。
+
+**实测核实**（2026-09-29 21:5x）：
+
+* 覆盖发生时，每个受影响路径**磁盘上只剩 1 份**，无备份可寻 → **原始内容不可恢复**。
+* 此后 `_raw/` **又被重写至少两轮**（18:50–18:59；21:15–21:25，其中 21:24–21:25 一批 125 个文件），
+  所以连「哪 17 个文件、哪一版」都**已无法按时间戳指认**：现存 **3324 个**文件里，
+  **没有任何一个的写入时间落在 17:18–17:20**。
+
+**性质更正**：`_raw/` 是「跑一轮覆盖一轮」的工作输出目录，**不是不可变档案库**。
+要冻结某轮证据必须复制成独立名字或另行归档，**不能依赖那里的当值文件充当历史**。
+
+**规则**（写给后续派单者）：① 写入 `_raw/` 必须经由 `run-rNN.ps1`；② **不要直接 `node probe-*.mjs`**；
+③ 派单时**必须写明轮次前缀纪律**——违规的直接原因是**派单方没交代**，不是子代理越权。
+
+**详细存档**：`verify-independent/_raw/README.md`（说明文件本身不受 runner 清空影响：已核实无 runner 清理该目录）。
+
+## rev-29 · 桌面端（DSH 0.2.0-rc.2 / Electron）适配：运行时可观测，触发判据一行未改
+
+来源：用户要求在**桌面端**（`@deepseek-ai/dsh-desktop` 0.2.0-rc.2 + 内置 DSH 0.2.0-rc.2）上
+使用这个插件，同时**不破坏网页端 0.1.7-rc.2 上已经冻结的行为**。交付与人工验收步骤见
+`docs/r29-桌面端-交付与验收.md`（含两条只能人眼验的判据）；契约层的复验在
+`docs/r29-桌面端契约-宿主.md` / `-浏览器.md`；共享事实与路径见 `verify-independent/_raw/r29/desktop-brief.md`。
+
+- **桌面端是什么（已复验）**：壳 `0.2.0-rc.2`（`app.asar` 121 MB，界面走 `dsh-app://app`），
+  内置 DSH `0.2.0-rc.2`（289 个包，`dsh/desktop-runtime.json` 的 `release.version=0.2.0-rc.2`、
+  `hostProtocolVersion=4`、node 24.18.1）；插件经**桌面 profile 的 junction**
+  （`C:\Users\28779\.dsh\profiles\desktop\node_modules\dsh-approval-chime` → 本工作区）挂进运行中的实例，
+  `package.json` 的 `dsh.profile.bundles` 含它 ⇒ **改一次 `lib/*.js`，桌面端可能立刻经 HMR 尝到**。
+  端口是**动态**的（本机 19387）：`lib/native-bridge.js` 的 `setPortSource(() => server.port)`
+  把它写进激活 URI，**推翻了"回填写死 3080"的旧猜测**。
+- **触发源**：0.2.0 的待审批在 **`ctx.uiSession.sessionStatus`**（root slot 钩子；快照是 `Map`，
+  行字段是**单数** `pendingInteraction`），0.1.7 的 `pendingInteractions` 已被移除 —— 插件用一个
+  **适配器**读它（新版优先、旧成员回退），rev-27 引入、rev-29 只是把它**变得可断言**。
+- **本轮改动**（产品侧只有 `lib/client.js`）：`REVISION` → `'rev-29 · the desktop runtime and the bound
+  pending hook are observable (the foreground rule is unchanged)'`；新增两件**只报告事实**的仪器 ——
+  `desktopPlatform()`/`diagnostics.platform()`（唯一来源 `document.documentElement.dataset.platform`，
+  取不到即 `null`，**没有任何分支读它**）与 `diagnostics.pendingHook()`（报告实际绑定的待审批源）；
+  `pageInForeground` 的注释补上**逐窗口状态表**（前台/失焦/最小化/托盘隐藏/遮挡，逐行标注由哪一项决定 +
+  壳侧 `file:line`）。**判据本身一行未改**：前台/后台的请求数仍是 **0 / 1**。
+- **真实变更集 = 3 行**（其余 10 行逐字节不变，`verify/_harness.mjs` **明确未动** —— t33 曾把它误列进变更集，
+  F1 更正、两轮复核确认）：
+
+  | 文件 | rev-28 | rev-29 |
+  | --- | --- | --- |
+  | `lib/client.js` | 229479 B / `41DAF63A…` | **235306 B / `389EEF36A6193E9E869066D13C5A700DAACDC8EE05D812E3F2E702004504D981`** |
+  | `verify/client-half.test.mjs` | 173831 B / `CB11E559…` | **178293 B / `B7A702DFF975B7446CCD62DBD2B46B88A449D8066789788DFD646CD05E89F56B`**（626 → 639 条） |
+  | `verify/custom-audio.test.mjs` | 20874 B / `2B79C650…` | **20874 B / `6AF2884FB13A7796FF0483699CBE8A58DBF7F3E34A08109992FB56243B4796E5`**（**同字节数**，只有戳变了） |
+
+- **验证（终值，安静树上重取）**：六个作者套件 `host-half 126 / client-half 639 / waterfall 22 /
+  custom-audio 76 / native-toast 377 / settings-model 29` = **1269 项全绿，各 exit 0**；
+  规范回归 `verify-independent/run-r13.ps1` **独立跑两次，两次 `RUNNER EXIT=0`**（第 0 节 13 个冻结文件逐行 OK、
+  变异表 45/45、reviewer 探针的登记红集合恰好一致）；真运行时探针
+  `verify-independent/probe-22-desktop-020.mjs` **29/29 exit 0**（10/10 变异各自红在指定断言）。
+  `host-half 126` / `native-toast 377` / `waterfall 22` 是 **rev-27/rev-28 的既有基线**，
+  **不是本轮新增**；本轮套件侧只有 `client-half` 626 → 639 与 `custom-audio` 的戳。
+- **live 复验**（桌面端在跑）：`GET http://127.0.0.1:19387/api/approval-chime/sessions` → **200**
+  `{"ok":true,"revision":2,"sessions":{}}`；`/native-toast` → **200** `{"ok":true,"state":"ready"}`；
+  `/not-a-route` → **401**（鉴权兜底）。⇒ 宿主半路由与惰性加载的 `lib/native-bridge.js` 都活着。
+- **锚**：13 行冻结清单与各探针的哈希/戳锚由 `verify-independent/r29-reanchor.mjs` 重锚（先 `--check` 打印
+  MOVED 行，再真跑；记录 `_raw/r29/release/r29-reanchor.json`，改前字节按内容哈希归档）。
+  重锚后逐个探针**自己复跑**：probe-4 `49/49`、probe-5 `88/88`、probe-8 `122 passed, 0 failed`、
+  probe-10 `90 passed, 0 failed`、probe-17 `97/97`（rev-29 戳与字节/sha 全中）、probe-18 `131 passed, 0 failed`，
+  各 exit 0。
+- **`probe-21` 的现状（它不是 canonical 的一部分）**：重锚后 **409/434 exit 1** —— 剩下的 25 条**全部**是真机
+  toast 平台族（`raise.ps1` 退 5、`History.GetHistory` 抛错、tag/group/actions 读回为空）。
+  判别器：`deploy/native-toast/selftest.ps1 -SkipToast` 实测 **6/6 PASS, exit 0** ⇒ 注册链完好，
+  这是**已知环境红**（rev-28 有同一现象；同一探针在能弹通知的会话里是 433/433）。
+- **不声称**：托盘隐藏/最小化/被遮挡时的前台判定（`C25/C26`）与"焦点落在侧栏嵌入式浏览器帧里"这条边界
+  仍是**运行时行为、需人眼实测**（两个探针里都写成待观测项，不写成 0.2.0 的缺陷）；
+  `0.2.0` **没有**改 list-slot 语义（该文件与 0.1.7 **逐字节相同**，见 `docs/契约调研.md` 勘误）；
+  真机通知的"点一次按钮"与"关掉开关后点旧通知无反应"两条仍只能人工确认（步骤见交付页 §4.3）。
+
+## rev-28 · 把验证层重新推导到 DSH 0.1.7：canonical 从 exit 1 回到 exit 0
+
+来源：rev-27 收尾时登记的「rev-26 的账」—— 设置模型迁移只改了实现与三份当值文档，**契约层与全部旧探针
+仍钉着 0.1.5/0.1.6 的 API**，于是 canonical 一直在红。本轮把这些行**逐条重新推导**到实测事实，
+**没有放宽任何判据**（改的是期望所描述的那个平台事实，不是期望本身）。
+
+- **触发源那一类（rev-27 的账）已在上一条**：`probe-5` 的 A.5 家族 + `probe-1`/`client-half`/`kit` 的
+  形状覆盖。
+- **设置契约 21 行（`probe-5` 55/78 → 88/88，exit 0）**：全部改钉 0.1.7 的**新**机制，每一条都先在
+  安装树里取到 `file:line` 才写：
+  命名空间 = profile 条目 id（`dsh-settings/lib/index.js:432` `ns: entry.options.id`）；
+  同一插件实例的第二个 presentation 抛（`:372`）；服务面 = `configure`/`prepareDocument`/`describe`/
+  `update`/`replace`/`mutate`（`lib/types/index.d.ts:80/91/96/102/108/114`，写入带 `expectedRevision` 栅栏）；
+  import 期解析 = `resolveConfig` → `runtime.Config["~standard"].validate(config)`
+  （`@deepseek-ai/cordis/lib/index.js:956-958`）；**`volatileForm` 那道静默死亡闸**（`dsh-settings:122`）；
+  客户端服务名 = `configForms`（`dsh-client-ui-settings/lib/client.js:1284`）、`get(entryId)` 造控制器（`:1309-1312`）、
+  `whileServed` 只服务 Host 真在服务的命名空间（`:1330-1334`）、表单 `ready` 需平台持有 view（`:1483`）；
+  设置外壳自己往 `settings.section` 注册（`dsh-client-ui-settings-general/lib/client.js:1167`）、插件分区同样
+  （`dsh-client-ui-settings-plugins/lib/client.js:201-204`）；locale 也走 `configForms`
+  （`dsh-client-locale/lib/client.js:1517`）。
+- **两处平台事实变了，正文里曾写死，本轮改正**（勘误见 `docs/契约调研.md` 文首 rev-28 节）：
+  ① **重复 loader entry id 不再抛**：0.1.7 把行按 id 收进 map（`cordis-plugin-loader/lib/index.js:81-82`），
+  后一层的行**替换**前一层 —— 结论不变（别重复 insert），**理由变了**（不再是"炸启动"）；
+  `probe-5` 的 E.2b 与 `cordis.patch.yml` 的注释、`docs/挂载与验收.md`、`docs/交付说明与验收手册.md`
+  同步改正。② **`$DSH_HOME/profiles/node_modules` 不再由 Host 维护**：0.1.7 反过来**清理** 0.1.5 的投影
+  （`dsh-app-boot/lib/index.js:593` + `:601-610` `removeLinkProjections()`），所以插件那条 junction 是
+  **人装的硬前提**；新增 `probe-5` 的 **E.3d** 直接断言它能解析。
+- **被删除的宿主 API（`probe-4`/`probe-8`/`probe-10` 从崩到绿）**：三条旧探针都在调 rev-26 删掉的
+  `schemaAnchors`/`schemaCandidates`/`loadSchemastery`/`loadSchemasteryAsync` 与 `ctx.settings.register`。
+  重推导为**当下真实的行为**：模块级 `Config`（是**函数**）与 `Config({})` 的默认值、
+  `configReader(config).get()` 才解开 **volatile 引用**（`verify/settings-model.test.mjs:105,125-126` 已是这个读法）、
+  正常路径恰好一次 `ctx.settings.configure({ auto: false }, ctx.fiber)`、
+  **拷贝件在 junction 之外根本 import 不进来**（`ERR_MODULE_NOT_FOUND`，即勘误 4 的"已接受代价"，
+  一行取代原来六行测量已删除的降级路径）、以及"顶层 import 只有一个是非 `node:` 且它就是 schemastery"
+  —— **rev-26 在 `verify/host-half.test.mjs` 做过这个反转，漏了 probe-4**。
+- **变异层（`probe-18 --mutate=all` 从 9 行 `observed=null` 到 9/9）**：根因是**测试夹具**而不是产品 ——
+  变体宿主半是从 `data:` URL 导入的，而 `data:` URL 模块**没有解析基准**，静态裸导入
+  （`import z from '@deepseek-ai/schemastery'`）必然 `ERR_UNSUPPORTED_RESOLVE_REQUEST`。现在变体写成
+  临时目录里的真文件，且**只替换那一行 import 语句**（不是第一次出现的引号串 —— 同一串在文件的散文里
+  也出现过，第一版替换打中了注释）。尝试过的两条路都记在案：链接（DSH 沙箱 `EPERM`）与整包拷贝
+  （会把 schemastery 自己的裸依赖 `cosmokit` 一起拖进来）。
+- **canonical 的接线**（`run-r13.ps1`）：`verify/settings-model.test.mjs`（rev-26 的套件，29/29）**此前既不在
+  冻结清单、也不在运行清单**，于是第 0 节一直报 `unrecorded file`、而那套件从没被跑过 —— 现在它是
+  **第 13 行**与**第 6 个套件**（tally 5 → 6）；两处印出来的"12 recorded files / rev-25 baseline"跟着改成 13/rev-28。
+- **reviewer 探针的重新登记**（`probe-r7-reqcheck.mjs`）：它**自 rev-26 起就死在 :456**
+  （`inputs(tree,'checkbox')[0]` 未定义：新设置页没有 `configForms` 作用域时返回 null，rev-7 的 shim 渲染不出来），
+  所以它既不产出注册的 `10 failed` 标记、也不产出红集。登记改成 runner 早已给 `reqcheck.mjs`/`reqcheck-rev5.mjs`
+  的那种形状（exit 1 + **死亡文本**作标记 + `why` 写明实测），**十条旧断言原文留在 `why` 里不重写**
+  （重写会抹掉 rev-7 的记录）。归因是实测的不是猜的：rev-25 的 canonical 日志里它还在跑
+  （`### reviewer rev-7 conformity probe: 79 passed / 10 failed`），而 rev-28 用**改前字节**做 A/B 复现同一处
+  :456 崩溃 —— 不是 rev-27 的触发源改动造成的。
+- **判据读数（本轮实测）**：canonical **RUNNER EXIT=0** —— 6 个套件 `126 / 626 / 22 / 76 / 377 / 29 = 1256` 各 exit 0、
+  第 0 节 **13 个冻结文件逐字节相同**、**44 个声明变异全部命中且红集精确**、容忍项只有 probe-13（无浏览器引擎）
+  与 probe-14（既有 pacing 红）。探针：`probe-1` 60/60、`probe-4` **49/49**、`probe-5` **88/88**、
+  `probe-8` **122/0**、`probe-10` exit 0、`probe-17` 97/97、`probe-18` 出货 131/0 且 `--mutate=all` **9/9**、
+  `r15t6` **rows=45 ok=45**、`r15t2` exit 0。
+- **不在 canonical 运行集内的**：`probe-21` 只能手跑，其**真机 toast 读数在 DSH 沙箱里失败**
+  （`raise.ps1` 退出 5 = WinRT 调用抛错），而同一时刻只读的 `selftest.ps1 -SkipToast` **6/6 PASS** ——
+  注册侧是好的，这条红是环境不是产品。
+- **未证 / 未办**：`probe-21` 的真机链路仍要人眼（点通知按钮那两条，见 rev-25 的人工清单）；
+  本轮没碰任何产品行为 —— `lib/*.js` 一个字节都没动（`lib/client.js` 仍是 rev-27 的
+  `41DAF63A…`/229479）。
+
+## rev-27 · 触发源搬家：DSH 0.1.7 删掉了 `pendingInteractions`，提示音跟着哑了
+
+来源：用户报告 ——「查一下为什么审批时提示音怎么没了」。**不是插件坏了，是 DSH 升级把它唯一的触发源删了。**
+
+- **症状与真因**：DSH `0.1.7-rc.2` 删掉了 `ctx.uiSession.pendingInteractions`（本插件赖以响铃的那个
+  HostObservable）。取不到源时插件**按设计**打印一行警告并停用提示音（"degraded, not broken"），于是
+  一声不响；而**挂在同一份 diff 上的 Windows 原生通知也一起哑了**。系统侧探针实测：全树 grep
+  （小写 `pendingInteractions`）**0 命中**，同一版本新增的是
+  `registerPendingInteraction(precedence)`（发布侧）与 `sessionStatus`（读取侧）。
+- **为什么"1203 项全绿"没拦住**：自测与**全部**独立探针都在**伪造**那个被移除的成员
+  （`verify/_harness.mjs`、`verify-independent/kit/platform.mjs` 与各探针自己的 fake），只有
+  `probe-5-contract.mjs` 读真源码 —— 而它的 A.5/A.5b 正是钉那个成员的两行：rev-25 归档的 canonical
+  日志里它们是绿的（`_raw/r25-evidence/r25-t25-run-r13-console-utf8.txt:232`，`probe-5 … 78/78`），
+  本轮开工时同一支探针是 **55/78**。
+- **修法（一个适配器，不是第二条路）**：`lib/client.js` 新增 `pendingSource()` —— **新版优先**
+  （`ctx.uiSession.sessionStatus`：root slot hook，快照
+  `Map<sessionId, {running, pendingInteraction, completionUnread}>`，内置审批面板经
+  `ctx.uiSession.registerPendingInteraction(precedence)` 发布）、**旧成员回退**；
+  `eachPending()` 把两种形状收成同一条 `(interaction, sessionId)` 流，diff、去重与通知的 sweep
+  **一行未动**；**只订阅其中一个**（§12(a)）。
+- **答题路径没变**：0.1.7 的决定词仍是 `allowed-once` / `rejected`，与本插件的 `NATIVE_DECISIONS` 逐字相同。
+- **本轮补上的那类断言**（同一个坑不许再藏一次）：`probe-5` 新增 **A.5e**「被移除的成员**真的不在了**」
+  （新助手 `fileAbsent`，对着**已安装的 DSH 源码**）+ A.5f/A.5g/A.5h（面板确实经
+  `registerPendingInteraction` 发布、`kind`/`key` 未变）；`client-half` 新增 **19 条** rev-27 段
+  （0.1.7 形状下响铃、**同一 key 重发不响**、无 interaction 的行不响、每会话音量/静音仍各自生效、
+  **两个成员同时在时只绑新的且恰好一次**、两个都没有时降级不抛）；`probe-1` 新增 **8 条**独立同款读数。
+- **锚定字节（rev-27）**：`lib/client.js` **229479 B / sha256 41DAF63A52A5ECDCE4718EC30C0263B18A46AD6F9FEABA8739A50CCDDBC2F227**
+  （改前 `14F53B82…`/225496，即 rev-26 设置模型迁移留下的当值）；`verify/_harness.mjs` 26777 B、
+  `verify/client-half.test.mjs` 173831 B、`verify-independent/kit/platform.mjs` 25996 B、
+  `verify-independent/probe-1-approval.mjs` 15697 B、`verify-independent/probe-5-contract.mjs` 22456 B、
+  `verify-independent/probe-17-r7-section.mjs` 55553 B。
+- **判据读数（本轮实测）**：6 个套件 **1256 项全绿**（host-half 126 + client-half 626 + waterfall 22 +
+  custom-audio 76 + native-toast 377 + settings-model 29，**各 exit 0**）；`probe-1` **60/60**、
+  `probe-17` **97/97**、`probe-19` **66/66**、`r15t2` exit 0、`probe-18` 出货模式
+  **131 assertions / 0 failed**；canonical 的第 0 节 = **12 个冻结文件逐字节相同**。
+- **重锚工具**：`verify-independent/r27-reanchor.mjs` —— 11 条显式字面量 + `run-r13.ps1` 冻结清单
+  12 行 + 0c 两行 + `probe-21` 锚表 11 行，**每个值都从被描述的那个文件现算，不手抄**；记录
+  `_raw/r27-evidence/archive/r27-reanchor.json`。另有一次第二遍
+  （`.scratch/r27-edit-probe17.mjs`：戳正则 + 四条 DSH 行号锚，记录
+  `r27-reanchor-secondpass.json`）—— 第一遍只锚了**字节**，漏了 probe-17 那句**戳正则**，
+  是 canonical 把它抓出来的。
+- **仍未办（rev-26 的账，本轮只登记，不代它改判据）**：`probe-5` 的 **21 行设置契约**仍是
+  0.1.5/0.1.6 的 API（现状 65/86）；`probe-4`/`probe-8`/`probe-10` 直接崩
+  （`plugin.schemaAnchors` / `plugin.loadSchemastery` 已被 rev-26 删除）；`probe-18 --mutate=*` 的
+  **9 行**与 reviewer 的 `probe-r7-reqcheck` 同因（临时副本解析不到
+  `@deepseek-ai/schemastery`，`ERR_UNSUPPORTED_RESOLVE_REQUEST` —— 正是勘误 4 里那条"已接受的代价"）；
+  canonical 尚未把 `verify/settings-model.test.mjs` 纳入运行清单。`probe-21` 不在 canonical 的运行集内
+  （只能手跑），其**真机 toast 读数在 DSH 沙箱里会失败**（`raise.ps1` 退出 5 = WinRT 调用抛错），
+  而只读的 `selftest.ps1 -SkipToast` 在同一时刻 **6/6 PASS** —— 注册侧是好的。
+
+## rev-25 · 待审批时弹一条 Windows 原生通知（「接受 / 拒绝」，默认关闭）
+
+来源：用户要求 ——「给待审批加一条 Windows 原生通知：待审批时弹一条带『接受 / 拒绝』按钮的系统通知，
+点按钮等价于在网页里点那个按钮（走客户端公开 API，不劫持审批瀑布）。**默认关闭、可卸载、fail-closed；
+不引入 npm 依赖、不编译原生模块**」。
+
+- **通知走 Windows toast 平台，没有第二条路径**：没有 HTML5 `Notification`、没有浮层替代、没有第二触发源。
+  正文与两个按钮的 XML 由实现生成、与冻结页 §10 的 ```xml 块**逐字节**同形；`History.GetHistory()` 能把
+  那条通知连 `<audio silent="true"/>` 一起读回来（A9 的三种摆放实测见 §0.2 与冻结页 §16）。
+- **触发源是页面已经投射出来的审批状态**（`uiSession`）：本功能**不**订阅、不包裹、不重实现审批瀑布；
+  两个按钮回填时走的是客户端**自己的公开答题路径**（卡片上那两个按钮调的是同一个调用）。
+  四态实测请求数 **0 / 1 / 1 / 1**（前台且聚焦 0 次；隐藏、失焦、回前台各 1 次），回前台只**撤除**、不回答。
+- **默认关闭 = 零请求**：关态下四条 native 路由一律 `200 skipped/disabled`、**不 spawn 任何子进程**、
+  回填目录不被创建也不被读取；活 token 也不会被消费（t9 的 F2 返修把这条闸补在主机侧）。
+- **fail-closed 是逐条量出来的**：伪造 token → 404；重复答案 → **409** 且**先到的那份一个字节都不动**；
+  过期答案文件被清扫且**永不投递**（token 仍 `pending`，只有 token 自己过期才 404）；未知按键 → 丢弃且**不**调用 `answer()`
+  （旁边有正向对照）；正文点击**不激活**任何东西（`<toast>` 上不写 `launch`）。
+- **一次审批只响一声**：toast XML 里 `<audio silent="true"/>`（按微软 schema 的成文默认值做的静音设计；
+  本机**没做听感测量**，见冻结页 §16.1 —— 这是**设计声明**，不是实测）。
+- **G1（并发写坏答案文件）已修**：每个写入者用**唯一临时名**、发布改走 `link`（内核保证 `EEXIST`），
+  `rename` 只在没有硬链接的卷上兜底。修复前基线是「20/20 双双 200、12/20 拼成两份 JSON」，
+  修复后**写侧 20 轮、读侧 20 轮、交叉 20 轮、预置答案 20 轮**共 80 轮读数全过：0 份拼接、恰一个 200 + 一个 409、0 个 `.tmp` 残留、恰交付一次。
+- **轮询失败的两种动词分开**（t11，契约 §5.1 / §8）：**瞬时失败**只计数、写诊断、**保留 token**、下一 tick 照常轮询；
+  收到 `skipped` 则**立刻放弃**该 token（不再轮询、不发撤销）。两条语义各有能变红的负控。
+- **可卸载**：`deploy/native-toast/{install,uninstall,selftest,raise,answer}.ps1` + `activate.vbs` + `tools/native-activate.mjs`，
+  注册表写入侧由**用户**在普通 PowerShell 执行（沙箱内写 HKCU 被拒，见下）—— 用户已真机装过一次，队长后来用一次性放宽的
+  沙箱复装两次（含幂等）并只读回读四值。
+- **真机上发现并修掉的两处安装器缺陷（用户先踩，队长复装确认）**：
+  - **H2**：用户在自己机器上安装时报 `[FAIL] … Invalid syntax` —— 旧实现用 `reg.exe add` 把值拼进一条命令行，
+    带空格与中文的键路径在引号拼接处被拆坏；后果是 `shell\open\command` **没建**，而当时 `selftest.ps1` 在"半安装"
+    状态下**仍然 PASS**（自检只查了它自己那份读数）。修法 = 改成**纯 PowerShell provider 写值**（不再拼 `reg.exe`
+    命令行）+ **每写一行就读回**；`selftest.ps1` 从四项加到**六项**（scheme 键在 / 默认值 / URL Protocol / command /
+    AUMID 显示名 / marker），六个方向各自都能单独变红（9 例夹具，含 H3 与 H2 两种形状）。
+  - **H3**（**H2 的修复自己引入的回归**）：`New-Item -Force` 会**清空已存在键的全部值与子键** ⇒ 第二行写值摸掉第一行刚写下的
+    `(default)`；因为顺序是"先建键、再写默认值、再写 URL Protocol…"，**逐行读回也抓不到**（读回发生在 wipe 之后）。
+    修法 = `Ensure-RegKey` **先 `Test-Path`、只在缺失时创建**（永不碰已存在的键）+ 默认值写的候选顺序与写后全量终检。
+    真机回读四值全对：scheme `(default)`、`URL Protocol`、`shell\open\command`、AUMID `DisplayName`。
+- **页面：通知开关独立成组、放在本页最后（用户裁决）**：「Windows 系统通知」整块从"启用"行后面挪到页面末尾，成为带小标题的
+  独立一组（`h3.dacGroup` + 开关 + 状态行 + 说明行）；`client-half` 新增 21 条断言钉住组容器唯一、子结构顺序、标题文本、
+  默认关、以及**组是卡片最后一个子节点**；**行为零改动**（搬动载荷剥掉注释与缩进后逐行 identical，`585 → 606` 无删除）。
+- **头部显示名已被用户确认**：用户真机装完后反馈「**看到了**」（通知头显示 `DSH 通知提醒`）—— 这是冻结页 §15 第 4 条那条
+  "不声称"的**正面证据**（该条**原文保留**，它是"本页不声称"的历史记录）。
+- **一条测试侧缺陷（不是产品缺陷）**：`verify/native-toast.test.mjs` 里读操作中心历史的循环写成
+  `for ($i = 0; $i -lt $history.Count; $i++)`，而 PS 5.1 的 WinRT 投影下 `$history` **没有** `Count` 属性 ——
+  member enumeration 让 `$history.Count` 渲染成 `1,1,1`，循环一次都不跑 ⇒ **操作中心非空时那两条真机断言必红**。
+  修法 `@($history)` + `foreach`；**断言条数 376 → 376 不变**，修后空/非空两种历史各一次 376/376 exit 0。
+- **修订戳**：`REVISION` → `'rev-25 · a pending approval raises a native Windows toast with Accept / Reject'`
+  （`lib/client.js:151`；本轮**唯一**一处由收尾步骤触碰的产品字节，反向替换证明：把这一行还原 ⇒ 逐字节得到 t11 的
+  `9D53743B…`/220290）。
+- **读数（终值，安静树上重取）**：五个作者套件 `host-half 124 / client-half 606 / custom-audio 75 / waterfall 22 /
+  native-toast 376` = **1203 项全绿，各 exit 0**；独立探针 `probe-21` **433/433 exit 0**（锚表 14 个文件的哈希闸
+  `atStart == atEnd`）；独立层 `probe-4` **58/58 exit 0**（本轮唯一一处独立层语义更新：追加产品新增的文档化默认键）；
+  规范回归 `verify-independent/run-r13.ps1` **exit 0**（第 0 节 12 个冻结文件全 OK、变异表 45/45、
+  四个 reviewer 探针的登记红集合**恰好**一致）。
+- **不声称**（逐条在冻结页 §15 与 `docs/native-toast-人工验收.md`）：横幅是否真的画在屏幕上、**真人点一次通知按钮**并把
+  页面里那次审批答掉、关掉开关后再点一次旧通知是否**没有反应**、真机卸载「一处不剩」、激活器端到端退出码
+  （沙箱 loopback ≈4.7 s > 3 s 预算，套件里那两条是**带测量理由的 skip**）、多标签页与被遮挡未失焦、
+  **同用户下的其它进程能伪造一次答案**、**没有硬链接的卷**上同 tick 两次点击可能互相覆盖（最后手段）。
+  **已不再属于"未证"**：头部显示名（用户真机「看到了」）；注册表写入侧（用户真机安装 + 队长一次性放宽沙箱复装两次，
+  四值只读回读全对）；协议链的机制层（`wscript → activate.vbs → 隐藏 PowerShell → 回填 POST` 已四层实测）。
+- **一条已接受的产品残余**：开关从「开」拨到「关」时不会撤掉屏幕上已经弹出的那条 —— 它最长再待 10 分钟，
+  期间按钮点了**没有任何反应**（关态关闸，fail-closed）。用户 2026-09-24 **明确接受**，本轮不改。
+- **过程如实记录**：质量门禁在这一轮转过三轮（t8 / t10 / t15 各判 needs_revision），自动「返修 → 复核」循环在
+  t15 之后**到顶（escalated）**，最后由用户裁决恢复并把仅剩的一条低 finding（H1）按 (b) 关闭（产品字节零变化）。
+  逐轮记录与全部读数见 `docs/变异覆盖与残留红.md` §24；本轮的追加清单见 `docs/rev25-收尾清单.md`。
+
+- **锚定字节（rev-25）**：`lib/client.js` **222960 B / sha256 5D94FF5B3ABBC19B00EC778C5499655057ED5F12C61168A134DAAEE047EA380F**；
+  `lib/index.js` **51134 B / sha256 5F872F04F883CB5FDFF78D8619D91E03C156E4C21014EACF476235F6D6619AED**（rev-25 主机半：native-toast 路由 + 桥接）；
+  `lib/native-toast.js` **28334 B / sha256 7F66E172FDDF8A9E85873680C2636A61399C065D78CF58478445B9FE5BCB9A2D**；
+  `lib/native-bridge.js` **25312 B / sha256 494FA682B6E0358D579E91E5C1BD8A061BC759A5046D8081C2ADED7275955A2B**；
+  `verify/client-half.test.mjs` **168023 B / sha256 0DE4ED37B311D3233F5299ED33D7F98B89154D227EA6C8BACB09EBD94DCB715B**；
+  `verify/custom-audio.test.mjs` **20263 B / sha256 5DF3A90CAB60A0E889DA5220DC8CDAD9B6E6E41E61520C533668FF372DE89383**（仍是 `:267` 那 1 个字节）；
+  `verify/host-half.test.mjs` **29764 B / sha256 4A31F313AF49C123435B544042C9F248BD2EF9622966A18595E8B6F50D677FC8**；
+  `verify/native-toast.test.mjs` **89894 B / sha256 86F56442D3C75236435E4B399A5A646C08B4F7486E481C00D3E6C1DDB292C32C**（t26 修完仍是 376 条）。
 
 ## rev-24 · 铃铛不动了，改画那一道斜杠（静音 = 把斜杠从左上拉到右下）
 
