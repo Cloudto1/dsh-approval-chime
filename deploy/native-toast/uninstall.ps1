@@ -40,7 +40,7 @@ $ErrorActionPreference = 'Continue'
 $aumid = 'Dsh.ApprovalChime.NativeToast'
 $schemeKey = 'HKCU\Software\Classes\dsh-approval-chime'
 $aumidKey = 'HKCU\Software\Classes\AppUserModelId\' + $aumid
-$dshHome = if ([string]::IsNullOrEmpty($env:DSH_HOME)) { Join-Path $env:USERPROFILE '.dsh' } else { $env:DSH_HOME }
+$dshHome = if ([string]::IsNullOrWhiteSpace($env:DSH_HOME)) { Join-Path $env:USERPROFILE '.dsh' } else { $env:DSH_HOME }
 $markerDir = Join-Path $dshHome 'approval-chime\native-toast'
 $markerPath = Join-Path $markerDir 'installed.json'
 

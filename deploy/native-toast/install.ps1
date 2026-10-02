@@ -74,7 +74,7 @@ $schemeKey = 'HKCU:\Software\Classes\' + $scheme
 $schemeQuery = 'HKCU\Software\Classes\' + $scheme
 $aumidKey = 'HKCU:\Software\Classes\AppUserModelId\' + $aumid
 $aumidQuery = 'HKCU\Software\Classes\AppUserModelId\' + $aumid
-$dshHome = if ([string]::IsNullOrEmpty($env:DSH_HOME)) { Join-Path $env:USERPROFILE '.dsh' } else { $env:DSH_HOME }
+$dshHome = if ([string]::IsNullOrWhiteSpace($env:DSH_HOME)) { Join-Path $env:USERPROFILE '.dsh' } else { $env:DSH_HOME }
 $markerDir = Join-Path $dshHome 'approval-chime\native-toast'
 $markerPath = Join-Path $markerDir 'installed.json'
 
@@ -119,17 +119,22 @@ function Ensure-RegKey {
 }
 
 # Read one value back with the SAME readers selftest.ps1 has: the provider's
-# (default)/named property, and the raw .NET key. Returns a string, or $null when
-# the value is not there. A false $null here is what turns a fake [ok] into a [FAIL].
+# (default)/named property, and the raw .NET key. Both raw results are kept as
+# OBJECTS and returned unchanged, so "the value is not there" ($null) can no longer
+# be read as "the value is there and empty" (''): the checks below compare with
+# -ceq, and '' -ceq '' is TRUE - that is exactly how a value that never landed
+# printed [ok]/[PASS] (F-02). $null -ceq '' is FALSE, so "not there" now fails.
 function Read-RegValue {
     param(
         [string]$Path,
         [string]$Name
     )
     $lookup = if ($Name -eq '(default)') { '' } else { $Name }
+    $viaProvider = $null
+    $viaDotNet = $null
     try {
         $providerKey = Get-Item -LiteralPath $Path -ErrorAction Stop
-        $viaProvider = [string]$providerKey.GetValue($lookup, $null)
+        $viaProvider = $providerKey.GetValue($lookup, $null)
     } catch {
         $viaProvider = $null
     }
@@ -139,14 +144,15 @@ function Read-RegValue {
         if ($dotnetKey -eq $null) {
             $viaDotNet = $null
         } else {
-            $viaDotNet = [string]$dotnetKey.GetValue($lookup, $null)
+            $viaDotNet = $dotnetKey.GetValue($lookup, $null)
             $dotnetKey.Close()
         }
     } catch {
         $viaDotNet = $null
     }
     if ($viaProvider -ne $null) { return $viaProvider }
-    return $viaDotNet
+    if ($viaDotNet -ne $null) { return $viaDotNet }
+    return $null
 }
 
 # Write ONE value and PROVE it landed by reading it back. The candidate chain is
@@ -265,17 +271,20 @@ if (-not $DryRun) {
     )
     foreach ($item in $expected) {
         $lookup = if ($item.Name -eq $defaultName) { '' } else { $item.Name }
+        # Both readers WITHOUT the [string] cast: the cast folded "not there" into
+        # '' and made -ceq pass for a value that was never written (F-02). The two
+        # variables stay separate on purpose - this row is a two-reader check.
         $viaProvider = $null
         $viaDotNet = $null
         try {
-            $viaProvider = [string](Get-Item -LiteralPath $item.Key -ErrorAction Stop).GetValue($lookup, $null)
+            $viaProvider = (Get-Item -LiteralPath $item.Key -ErrorAction Stop).GetValue($lookup, $null)
         } catch {
             $viaProvider = $null
         }
         try {
             $dotnetKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(($item.Key -replace '^HKCU:\\', ''), $false)
             if ($dotnetKey -ne $null) {
-                $viaDotNet = [string]$dotnetKey.GetValue($lookup, $null)
+                $viaDotNet = $dotnetKey.GetValue($lookup, $null)
                 $dotnetKey.Close()
             }
         } catch {
@@ -314,15 +323,24 @@ if ($DryRun) {
     exit 0
 }
 
-try {
-    if (-not (Test-Path -LiteralPath $markerDir)) {
-        New-Item -ItemType Directory -Path $markerDir -Force | Out-Null
+# ONLY a complete registration leaves a marker (F-01). The Host reads this file as
+# "the feature is installed" and raises toasts from it, so a marker written next to
+# a failed registry write is what makes a dead button look alive. Without it the
+# feature stages as not-installed and no toast is raised at all - a visible absence
+# instead of a silent dead button.
+if ($script:failures -eq 0) {
+    try {
+        if (-not (Test-Path -LiteralPath $markerDir)) {
+            New-Item -ItemType Directory -Path $markerDir -Force | Out-Null
+        }
+        [System.IO.File]::WriteAllText($markerPath, $markerJson, (New-Object System.Text.UTF8Encoding($false)))
+        Write-Output ('[ok] wrote ' + $markerPath)
+    } catch {
+        Write-Output ('[FAIL] could not write ' + $markerPath + ': ' + $_.Exception.Message)
+        $script:failures = $script:failures + 1
     }
-    [System.IO.File]::WriteAllText($markerPath, $markerJson, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Output ('[ok] wrote ' + $markerPath)
-} catch {
-    Write-Output ('[FAIL] could not write ' + $markerPath + ': ' + $_.Exception.Message)
-    $script:failures = $script:failures + 1
+} else {
+    Write-Output ('[FAIL] NOT writing ' + $markerPath + ' - the registration is incomplete (' + [string]$script:failures + ' failure(s) above)')
 }
 
 Write-Output ''

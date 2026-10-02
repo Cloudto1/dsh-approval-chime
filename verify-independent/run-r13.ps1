@@ -424,9 +424,9 @@ function Get-FailedAssertions {
 # added it to the run list). Re-anchoring this table is the ONLY edit a future revision should need
 # here (plus the two anchors in section 0c).
 $frozenManifest = @(
-  @{ path = 'lib\client.js';                bytes = 235306; sha = '389EEF36A6193E9E869066D13C5A700DAACDC8EE05D812E3F2E702004504D981' },
-  @{ path = 'lib\index.js';                 bytes = 50959;  sha = 'CAE655066F1CBB5EAD22E5030453505FCD32D3493A59B98EA733C906D151A0BF' },
-  @{ path = 'lib\native-toast.js';          bytes = 28334;  sha = '7F66E172FDDF8A9E85873680C2636A61399C065D78CF58478445B9FE5BCB9A2D' },
+  @{ path = 'lib\client.js';                bytes = 237926; sha = 'C8631CA45ADBAC8ED84B7E3D10A8370ADE6E5A380902772FBC122744EE0DC04D' },
+  @{ path = 'lib\index.js';                 bytes = 52095;  sha = 'CD0CB30DB33F45B50E41724140FCB8C5C2EA3CACFB010DAC24D6E7CA68CC7062' },
+  @{ path = 'lib\native-toast.js';          bytes = 28623;  sha = '9E23DD249437C44875B9641E641A9C2857C36B33E5BE02F8D68F7EB7731861FA' },
   @{ path = 'lib\native-bridge.js';         bytes = 25816;  sha = 'CA5FB926F7054E98C489E399DC216BCF9F9482F360199A97B5FB748FABF4BF72' },
   @{ path = 'verify\_harness.mjs';          bytes = 26777;  sha = 'EC74EBB6A326389A8CE29752C6B1F7DDD36E5B833EFECB164FC8E6C26DE9D439' },
   @{ path = 'verify\client-half.test.mjs';  bytes = 178293; sha = 'B7A702DFF975B7446CCD62DBD2B46B88A449D8066789788DFD646CD05E89F56B' },
@@ -627,8 +627,8 @@ Write-Host ''
 Write-Host '=== 0c. the revision anchors this run asserts against, and the doc drift note ==='
 Write-Host 'rev-25 changed lib/client.js, lib/index.js, verify/ and added lib/native-toast.js + lib/native-bridge.js: both anchors below are re-pinned to the rev-25 bytes.'
 foreach ($row in @(
-    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 235306; sha = '389EEF36A6193E9E869066D13C5A700DAACDC8EE05D812E3F2E702004504D981' },
-    @{ path = (Join-Path $plugin 'lib\index.js'); bytes = 50959;  sha = 'CAE655066F1CBB5EAD22E5030453505FCD32D3493A59B98EA733C906D151A0BF' })) {
+    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 237926; sha = 'C8631CA45ADBAC8ED84B7E3D10A8370ADE6E5A380902772FBC122744EE0DC04D' },
+    @{ path = (Join-Path $plugin 'lib\index.js'); bytes = 52095;  sha = 'CD0CB30DB33F45B50E41724140FCB8C5C2EA3CACFB010DAC24D6E7CA68CC7062' })) {
   $item = Get-Item $row.path
   $hash = (Get-FileHash $row.path -Algorithm SHA256).Hash
   $ok = ($item.Length -eq $row.bytes) -and ($hash -eq $row.sha)

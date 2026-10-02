@@ -56,7 +56,7 @@ $expectedSchemeLabel = 'URL:' + $appName + ' ' + (-join (@(0x56DE, 0x586B, 0x534
 $schemeKey = 'HKCU:\Software\Classes\' + $scheme
 $commandKey = $schemeKey + '\shell\open\command'
 $aumidKey = 'HKCU:\Software\Classes\AppUserModelId\' + $aumid
-$dshHome = if ([string]::IsNullOrEmpty($env:DSH_HOME)) { Join-Path $env:USERPROFILE '.dsh' } else { $env:DSH_HOME }
+$dshHome = if ([string]::IsNullOrWhiteSpace($env:DSH_HOME)) { Join-Path $env:USERPROFILE '.dsh' } else { $env:DSH_HOME }
 $markerPath = Join-Path (Join-Path $dshHome 'approval-chime\native-toast') 'installed.json'
 
 function Read-RegistryObservations {

@@ -130,13 +130,13 @@ const hashFile = (relative) => createHash('sha256').update(readFileSync(join(PLU
  * contract page t14 `4349F9EC…`/53941 → t4 `A516D2C6…`/61987.
  */
 const REVISION_ANCHORS = {
-  'lib/client.js': { sha256: '389eef36a6193e9e869066d13c5a700daacdc8ee05d812e3f2e702004504d981', bytes: 235306, note: 't22 UI grouping: the notification block is its own group, last on the page' },
-  'lib/native-toast.js': { sha256: '7f66e172fddf8a9e85873680c2636a61399c065d78cf58478445b9fe5bcb9a2d', bytes: 28334, note: 't14 write path: unique temp + link publish' },
+  'lib/client.js': { sha256: 'c8631ca45adbac8ed84b7e3d10a8370ade6e5a380902772fbc122744ee0dc04d', bytes: 237926, note: 't22 UI grouping: the notification block is its own group, last on the page' },
+  'lib/native-toast.js': { sha256: '9e23dd249437c44875b9641e641a9c2857c36b33e5be02f8d68f7eb7731861fa', bytes: 28623, note: 't14 write path: unique temp + link publish' },
   'lib/native-bridge.js': { sha256: 'ca5fb926f7054e98c489e399dc216bcf9f9482f360199a97b5fb748fabf4bf72', bytes: 25816, note: 't14 EEXIST -> 409' },
-  'lib/index.js': { sha256: 'cae655066f1cbb5ead22e5030453505fcd32d3493a59b98ea733c906d151a0bf', bytes: 50959, note: 't6 host half' },
-  'deploy/native-toast/install.ps1': { sha256: '80a76fd8cfcf884dd21e692d55d73631f708a608ab568f423b9d57e48044dcd5', bytes: 15094, note: 't21 H3 repair: ensure-once key + verified write chain + final full check' },
-  'deploy/native-toast/uninstall.ps1': { sha256: '77d8b3264e9d1c2170fb455952f6f29cd1e8d4bbb058033d6fec20bf3512bd5e', bytes: 5243, note: 't17 H2 audit: reg.exe gets key paths only' },
-  'deploy/native-toast/selftest.ps1': { sha256: '183a7124072b86553dde90c8af84bde3f12875a9e4d688099d67bfb045aae37b', bytes: 12468, note: 't21 six-check self-test (scheme (default) added)' },
+  'lib/index.js': { sha256: 'cd0cb30db33f45b50e41724140fcb8c5c2ea3cacfb010dac24d6e7ca68cc7062', bytes: 52095, note: 't6 host half' },
+  'deploy/native-toast/install.ps1': { sha256: 'b5c73a7dac9407a0dfc9b1847f82aec2f0058736f11cfb96906764f4564f4376', bytes: 16234, note: 't21 H3 repair: ensure-once key + verified write chain + final full check' },
+  'deploy/native-toast/uninstall.ps1': { sha256: '58d3427f88bbabb8e5a4ab045485bda0c26c1895589a15f59fa7f24dc019138a', bytes: 5248, note: 't17 H2 audit: reg.exe gets key paths only' },
+  'deploy/native-toast/selftest.ps1': { sha256: 'a56720834b5538e3005ac99eb4b36df9189034af6b3b9501a2c3b735ae2c69bc', bytes: 12473, note: 't21 six-check self-test (scheme (default) added)' },
   'deploy/native-toast/raise.ps1': { sha256: '90ee71c794ab98191269ec8a7bb8b96fc957adc4261bfa097474daf46baecc68', bytes: 2808, note: 't6 deploy' },
   'deploy/native-toast/answer.ps1': { sha256: '07487cd36ea419cefb8d36b9c05f8732dcfb2390ffa1603ac449f320bd9c7006', bytes: 2990, note: 't6 deploy' },
   'deploy/native-toast/activate.vbs': { sha256: '8ee7dd9ad90367e35f5294193583403cdf1640d6d0f5571e8650dd4c6668eeb4', bytes: 1985, note: 't9 F5 whitelist' },
@@ -643,7 +643,7 @@ report.check(
 const clientAnchor = anchorRows.find((row) => row.relative === 'lib/client.js');
 report.check(
   'lib/client.js is the rev-29 byte image of this round (the trigger source), not an older one',
-  clientAnchor?.actual === '389eef36a6193e9e869066d13c5a700daacdc8ee05d812e3f2e702004504d981' && clientAnchor?.actualBytes === 235306,
+  clientAnchor?.actual === 'c8631ca45adbac8ed84b7e3d10a8370ade6e5a380902772fbc122744ee0dc04d' && clientAnchor?.actualBytes === 237926,
   `${clientAnchor?.actual} / ${String(clientAnchor?.actualBytes)} B`,
 );
 

@@ -63,12 +63,12 @@ const HOST_PATH = join(PLUGIN, 'lib', 'index.js');
  */
 const FROZEN = {
   client: {
-    bytes: 235306,
-    sha256: '389EEF36A6193E9E869066D13C5A700DAACDC8EE05D812E3F2E702004504D981',
+    bytes: 237926,
+    sha256: 'C8631CA45ADBAC8ED84B7E3D10A8370ADE6E5A380902772FBC122744EE0DC04D',
   },
   host: {
-    bytes: 50959,
-    sha256: 'CAE655066F1CBB5EAD22E5030453505FCD32D3493A59B98EA733C906D151A0BF',
+    bytes: 52095,
+    sha256: 'CD0CB30DB33F45B50E41724140FCB8C5C2EA3CACFB010DAC24D6E7CA68CC7062',
   },
   revision: 'rev-29 · the desktop runtime and the bound pending hook are observable (the foreground rule is unchanged)',
   /** 任务书里写的 client 字节数（用于把「字面值过期」和「产品回归」分开）。 */
