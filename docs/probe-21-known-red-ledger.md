@@ -26,6 +26,7 @@
 | 修完 4 条 + 无抖动 | 399/434 | 35 | `probe21-run3.log` |
 | **提交后（实测）** | **400/434** | **34** | `probe21-after-commit.log`；名单 `probe21-34-red-final.txt` |
 | **红线重画后（用户选 1，实测）** | **401/434** | **33** | `probe21-after-redraw.log`；名单 `probe21-after-redraw.failures.txt` |
+| **verify6 复核修正后（实测，当前）** | **402/435** | **33** | `probe21-after-banrestore.log`；名单 `probe21-after-banrestore.failures.txt`（总数 434→435：为"只有一份定义"单独立了一条断言） |
 
 **33 条的实测构成**：**真机通知环境 25 条 · 证据缺失 8 条 · 待裁决 0 条** —— 与本文档 §4 的分组逐条吻合
 （原来的第 34 条已按用户裁决关闭，见 §4.3）。
@@ -98,18 +99,35 @@
 
 新判据（`probe-21-native-toast.mjs`，检查已改名）：
 
-- 两条硬禁令不变：区域里**不许**出现 `new Notification`，**不许**出现 `MessageBox`；
+- 硬禁令**一条不少**：区域里**不许**出现 `Notification`（**整词**，不是只禁 `new Notification`）、**不许**出现 `MessageBox`；
 - 区域里**允许且只允许一处**界面构造：共用的 `sectionHead()` 标题栏。判定方式是
-  "全区域的 `createElement` 总数 == 标题栏函数体内的数量 == 3"（外框 div + 标题 h2 + 版本号 span）；
-- `sectionHead()` 在整个 client 里**必须只有一份定义**；
-- 于是：**区域里多任何一处界面元素 → 红；标题栏里多长一个元素 → 红；整块没有界面代码 → 绿**（回到老样子）。
+  "全区域的 `createElement` **调用**数 == 标题栏函数体内的调用数 == 3"（外框 div + 标题 h2 + 版本号 span）；
+- `sectionHead()` 在整个 client 里**必须只有一份定义**（**单独的断言**，不再搭在区域判据里）；
+- 于是：**区域里多任何一处界面构造 → 红；标题栏里多写一个 `createElement` → 红；整块没有界面代码 → 绿**（回到老样子）。
 
-**可证伪性（实测，5/5 按声明）**：取证脚本**从探针源码里抽取那段判据原文**再求值（不是照抄一份），
-五个用例逐条对：正本 → 绿；区域里加一个 `createElement` → 红；标题栏里加第四个 → 红；
-加 `MessageBox(` → 红；删掉标题栏（区域变成无界面代码）→ 绿。
-输出：`.scratch/audit-r30/native-block-redraw-check.log`。
+**可证伪性（实测，11/11 按声明）**：取证脚本**从探针源码里抽取判据原文**再求值（不是照抄一份）。
+Part A 八例：正本 → 绿；区域里加 `createElement` → 红；标题栏里加第四个 → 红；加 `MessageBox(` → 红；
+删掉标题栏（区域无界面代码）→ 绿；`Notification.requestPermission()` → 红；
+`new window.Notification('x')` → 红；`const N = window.Notification; new N('x')` → 红。
+Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 2 → 红；全删 0 → 红。
+输出：`.scratch/audit-r30/native-block-redraw-check-v2.log`（旧版 `…-check.log` 为 5 例）。
 
-**实测效果**：probe-21 从 400/434（34 条红）变为 **401/434（33 条红）**，该检查 PASS；体检一次 **EXIT=0**。
+**第一版重画被 verify6 复核挑出 3 处，已修**（这是独立复核的价值所在）：
+
+1. **真退步**：第一版只禁 `new Notification`，于是 `Notification.requestPermission()`、
+   `new window.Notification(…)`、`const N = window.Notification` **三种写法都能溜过去**，而老规矩全都抓得住
+   → 已把**整词 `Notification`** 禁令装回来（区域里本来就是 0 处，装回来不影响正本）。
+2. **"只有一份定义"被短路**：区域里没有界面代码时判据会提前返回，**两份定义也能绿** → 已拆成**独立断言**。
+3. **措辞过宽**：写的是"钉死三个元素"，实际钉的是**三个 `createElement` 调用** → 已改成准确说法。
+
+**仍存在的洞（诚实记录，**等用户决定要不要补**）**：
+
+| 洞 | 能不能绕 | 老规矩抓得住吗 | 补的代价 |
+|---|---|---|---|
+| 标题栏里用 `innerHTML` / `insertAdjacentHTML` 加第四个元素 | 能（正本这两处在区域里是 0 次） | **也抓不住**（存量洞） | 便宜：区域里加一条禁令即可 |
+| `React['create'+'Element']` 这类拼接写法 | 能 | **也抓不住**（存量洞） | 贵：要真解析代码结构，不是找字 |
+
+**实测效果**：probe-21 从 400/434（34 条红）→ **402/435（33 条红）**，两条相关断言都 PASS；体检一次 **EXIT=0**。
 
 ## 5. 防复发（本轮新增，已在体检里生效）
 
@@ -130,7 +148,7 @@
 2. **在正常桌面会话里手工跑一次发布流程** —— 能消掉 4.1 的 25 条，但 4.2 的 8 条**永远消不掉**，所以**仍然不会全绿**。
 
 **结论**：这 33 条**不是产品问题**。产品由另外两把锁把关，且都是绿的：
-六套件 **126/639/22/76/377/29** + 冻结清单 **13/13**。本文件的作用是让这 34 条**有据、有主、不再突然冒出来**。
+六套件 **126/639/22/76/377/29** + 冻结清单 **13/13**。本文件的作用是让这 33 条**有据、有主、不再突然冒出来**。
 
 ---
 
@@ -138,9 +156,15 @@
 
 | 内容 | 路径 |
 |---|---|
-| 三次 probe-21 原始日志 | `.scratch/audit-r30/probe21-{after-anchor,after-reanchor,run3}.log` |
-| 35 条/37 条红名单 | `.scratch/audit-r30/probe21-after-reanchor.failures.txt` |
+| 各阶段 probe-21 原始日志 | `.scratch/audit-r30/probe21-{after-anchor,after-reanchor,run3,after-commit,after-redraw,after-banrestore}.log` |
+| 各阶段红名单 | `.scratch/audit-r30/probe21-{after-reanchor,after-commit,after-redraw,after-banrestore}.failures.txt`（33 条的当前名单见 `after-banrestore`） |
 | 逐条清单（含 39 条时的原始分析） | `.scratch/audit-r30/probe21-red-list.md` |
 | 本轮修复报告（含独立复核结论） | `.scratch/audit-r30/fix-report-4-residuals.md` |
-| 独立复核报告 | `.scratch/audit-r30/verification-of-fix-4-residuals.md` |
+| 独立复核报告（甲） | `.scratch/audit-r30/verification-of-fix-4-residuals.md` |
+| 独立复核报告（plan 甲 全套） | `.scratch/audit-r30/verification-of-plan-jia.md` |
+| 独立复核报告（红线重画 verify6） | `.scratch/audit-r30/verification-of-redraw.md` |
+| 横幅范围重量（node，含更正说明） | `.scratch/audit-r30/banner-range-check.log` |
+| 红线重画的可证伪性（11 例，当前版） | `.scratch/audit-r30/native-block-redraw-check-v2.log` |
+| 各阶段 canonical 日志与退出码侧车 | `.scratch/audit-r30/canonical-*.log`、`canonical-*.exit.txt` |
 | probe-24 正本 + 三种坏账本日志 | `.scratch/audit-r30/probe24-{shipped,falsify-flip-sha,falsify-wrong-bytes,falsify-row-removed}.log` |
+| probe-23 CLI 契约 + 变异日志 | `.scratch/audit-r30/probe23-mutant.log`、`probe23-mutant.exit.txt` |

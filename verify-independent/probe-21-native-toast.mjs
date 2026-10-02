@@ -754,6 +754,19 @@ report.check(
  * body must be exactly the three elements it is today (wrapper div + h2 title + revision span).
  * A second DOM site anywhere in the region, or a fourth element inside the helper, still fails —
  * the blanket ban is not weakened, it is narrowed to the one exception the user approved.
+ *
+ * CORRECTED AFTER THE verify6 ROUND (it found that the first redraw had silently NARROWED a ban):
+ *   - the region ban is the OLD whole-word `Notification`, not `new Notification`: the narrower
+ *     regex let `Notification.requestPermission()`, `new window.Notification(…)` and
+ *     `const N = window.Notification` pass, while the old rule caught all three (measured);
+ *   - "exactly ONE definition of the helper" is its own assertion below, because the region
+ *     predicate returns early when the region is DOM-free and would have accepted a second
+ *     definition unseen;
+ *   - the pinned number is a count of createElement CALLS, not of elements: `innerHTML` /
+ *     `insertAdjacentHTML` inside the helper could add a fourth element and stay green (measured by
+ *     that round). Both are 0 in the region today; banning them is the user's call, and the ledger
+ *     records it as an open offer — together with the text-matching limit that computed access
+ *     (`React['create'+'Element']`) is invisible to this check, as it was to the old rule.
  */
 const NATIVE_BLOCK_HELPER_NAME = 'sectionHead';
 const NATIVE_BLOCK_HELPER = `function ${NATIVE_BLOCK_HELPER_NAME}(`;
@@ -765,7 +778,7 @@ report.check(
     if (start < 0 || end < 0) return false;
     const block = CLIENT_SOURCE.slice(start, end);
     readings.nativeBlockBytes = block.length;
-    if (/\bnew\s+Notification\b/.test(block) || block.includes('MessageBox')) return false;
+    if (/\bNotification\b/.test(block) || block.includes('MessageBox')) return false; // the OLD rule's whole-word ban, restored
     const countIn = (text) => (text.match(/createElement/g) ?? []).length;
     const total = countIn(block);
     const helperSites = CLIENT_SOURCE.split(NATIVE_BLOCK_HELPER).length - 1;
@@ -777,9 +790,16 @@ report.check(
     if (helperEnd < 0) return false;
     const inside = countIn(block.slice(helperAt, helperEnd));
     readings.nativeBlockDom.inside = inside;
-    return inside === total && inside === 3; // all of it in the helper, and the helper is the pinned three
+    return inside === total && inside === 3; // all of it in the helper, and the helper body is exactly three CALLS
   })(),
-  `the region may contain exactly one DOM construction, the shared ${NATIVE_BLOCK_HELPER_NAME}() head (pinned at three elements)`,
+  `the region may contain exactly one DOM construction, the shared ${NATIVE_BLOCK_HELPER_NAME}() head (pinned at three createElement calls)`,
+);
+report.same(
+  `the shared ${NATIVE_BLOCK_HELPER_NAME}() head has exactly ONE definition in the client bundle`,
+  // Own check, NOT folded into the region predicate: that one returns early when the region is
+  // DOM-free, which would let a SECOND definition through unnoticed (found by the verify6 round).
+  CLIENT_SOURCE.split(NATIVE_BLOCK_HELPER).length - 1,
+  1,
 );
 report.check('the frozen route string is the only native endpoint the client knows', CLIENT_SOURCE.includes(`'${ROUTE}'`), ROUTE);
 report.check(
