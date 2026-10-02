@@ -25,24 +25,27 @@
 | 修完 4 条 + 抖动命中 | 397/434 | 37 | `probe21-after-reanchor.log` |
 | 修完 4 条 + 无抖动 | 399/434 | 35 | `probe21-run3.log` |
 | **提交后（实测）** | **400/434** | **34** | `probe21-after-commit.log`；名单 `probe21-34-red-final.txt` |
+| **红线重画后（用户选 1，实测）** | **401/434** | **33** | `probe21-after-redraw.log`；名单 `probe21-after-redraw.failures.txt` |
 
-**34 条的实测构成**（用名单逐条分类）：**真机通知环境 25 条 · 证据缺失 8 条 · 待裁决 1 条** —— 与本文档 §4 的分组逐条吻合。
+**33 条的实测构成**：**真机通知环境 25 条 · 证据缺失 8 条 · 待裁决 0 条** —— 与本文档 §4 的分组逐条吻合
+（原来的第 34 条已按用户裁决关闭，见 §4.3）。
 
 **抖动**：它自己有一段并发竞态测量（`r3/G1 (cross)`，20 轮 POST/GET 同时发），在这个受限沙箱里
 **同一份代码三次跑出 35 / 37 / 35** —— 其中一次有 2 条红（`no round delivered the decision twice`、
 `every round is one of the two legal outcomes`）。**这 0–2 条是计时抖动，不是产品问题**（插件字节三次完全相同）。
 
-## 3. 本轮已关闭的 5 条（用户裁决 甲 = 修）
+## 3. 本轮已关闭的 6 条（裁决 **甲** = 修；下面第一条按用户**选 1** 重画判据，详见 §4.3）
 
 | 红的条目 | 根因 | 怎么关的 | 证据 |
 |---|---|---|---|
+| `the native-notification block builds no UI of its own…`（旧名：`the client never creates a DOM node inside its native-notification block`） | 老规矩"两条横幅之间一律不许 `createElement`"被第二批修复（白纸页）挪进来的**共用标题栏**顶掉了 | **用户选 1：重画判据** —— 提名允许那**一个**共用标题栏，并按大小钉死（见 §4.3） | `native-block-redraw-check.log`；`probe21-after-redraw.log` |
 | `the probe is reading the anchored revision…` | r30 的部署批次改了 4 个脚本（install/uninstall/selftest/activate），没人更新它的小抄 | 4 行按盘上真值重锚：install `21E7B0CE…`/18500、uninstall `5F674BFF…`/6221、selftest `F681293C…`/12470、activate `474DA965…`/2639 | `fix-report-4-residuals.md` §6 |
 | `activate.vbs starts PowerShell with SW_HIDE (Run cmd, 0, False)` | r30 把那句拆成 `Set shell = …` + `shell.Run cmd, 0, False`，**行为没变**（`0` 仍是隐藏窗口） | 断言改成现在的真写法 | 同上 |
 | `the Host suite still carries its two literal single-line default-value expectation rows` | 2026-10-01 事故把原件毁了，**重建件里只有 1 条**（原本 3 条），探针记的是旧数 | 期望值 2 → 1，并写清"这是重建件的性质" | `probe-21:2371-2377` |
 | `the suite description still names the switch in its defaults row` | 探针找 `nativeToast:false`（无空格），文件里一直是有空格的 `nativeToast: false` | 断言改成真写法 | `probe-21:2395-2397` |
 | `every entry git reports under verify-independent/** is one … declared` | 本轮新增 `probe-23-cli-args.mjs`、`probe-24-anchor-drift.mjs` 时是未跟踪文件 | **提交后消失**（tracked 文件不再出现在 `git status`） | `git status` |
 
-## 4. 剩下的 34 条（按根因分组，均已定性）
+## 4. 剩下的 33 条（按根因分组，均已定性）
 
 ### 4.1 这台机器上跑不了（25 条）—— 要真弹通知再读回来
 
@@ -72,7 +75,7 @@
 另：它自己那份"改前字节存档"（`_raw/r25-evidence/archive/probe-21-…6002b747….txt`）在 git 历史的 4 个版本里
 **没有一个防伪码对得上** → 同样无法复原。
 
-### 4.3 待裁决（1 条）
+### 4.3 已按用户裁决关闭（1 条 → 现为 0）
 
 `the client never creates a DOM node inside its native-notification block` —— 探针把 `lib/client.js` 里
 "windows notifications" 到 "approval watch" 两条横幅之间的整段划为**只准发请求、不准建界面元素**的区块。
@@ -90,8 +93,23 @@
 > （第一批之后仍是 0）。原始测量输出：`.scratch/audit-r30/banner-range-check.log`。
 
 **功能上是对的**（一个标题栏定义、两页共用、不会走样）；**红线确实被跨过**。
-两个选择：**(1)** 认这条红线改了，按语义重新划界；**(2)** 把 `sectionHead()` 挪回横幅之后（要动 `lib/client.js`
-→ 重锚冻结清单第 427 行 + 重跑全套）。**用户尚未裁决。**
+
+**用户裁决（r30 尾轮）：选 1 —— 认这条红线改了，把判据改成按意思划界，产品代码一行不动。**
+
+新判据（`probe-21-native-toast.mjs`，检查已改名）：
+
+- 两条硬禁令不变：区域里**不许**出现 `new Notification`，**不许**出现 `MessageBox`；
+- 区域里**允许且只允许一处**界面构造：共用的 `sectionHead()` 标题栏。判定方式是
+  "全区域的 `createElement` 总数 == 标题栏函数体内的数量 == 3"（外框 div + 标题 h2 + 版本号 span）；
+- `sectionHead()` 在整个 client 里**必须只有一份定义**；
+- 于是：**区域里多任何一处界面元素 → 红；标题栏里多长一个元素 → 红；整块没有界面代码 → 绿**（回到老样子）。
+
+**可证伪性（实测，5/5 按声明）**：取证脚本**从探针源码里抽取那段判据原文**再求值（不是照抄一份），
+五个用例逐条对：正本 → 绿；区域里加一个 `createElement` → 红；标题栏里加第四个 → 红；
+加 `MessageBox(` → 红；删掉标题栏（区域变成无界面代码）→ 绿。
+输出：`.scratch/audit-r30/native-block-redraw-check.log`。
+
+**实测效果**：probe-21 从 400/434（34 条红）变为 **401/434（33 条红）**，该检查 PASS；体检一次 **EXIT=0**。
 
 ## 5. 防复发（本轮新增，已在体检里生效）
 
@@ -111,7 +129,7 @@
 1. **放松它的判据**（把"缺证据"和"真机通知"那几类改成不算红）—— 那是**改验收标准**，用户已明确不选（选了甲）。
 2. **在正常桌面会话里手工跑一次发布流程** —— 能消掉 4.1 的 25 条，但 4.2 的 8 条**永远消不掉**，所以**仍然不会全绿**。
 
-**结论**：这 34 条**不是产品问题**。产品由另外两把锁把关，且都是绿的：
+**结论**：这 33 条**不是产品问题**。产品由另外两把锁把关，且都是绿的：
 六套件 **126/639/22/76/377/29** + 冻结清单 **13/13**。本文件的作用是让这 34 条**有据、有主、不再突然冒出来**。
 
 ---

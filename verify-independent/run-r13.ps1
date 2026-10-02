@@ -685,7 +685,8 @@ Write-Host '=== 2. independent probes (the set run-r4 ... run-r7 shipped, plus p
 Write-Host 'probe-21-native-toast.mjs is NOT part of this run on purpose: it needs _raw records that no'
 Write-Host 'clone has, plus a live notification platform. Its eleven byte anchors ARE re-derived every run'
 Write-Host 'by probe-24-anchor-drift.mjs, and its remaining adjudicated reds are listed in'
-Write-Host 'docs/probe-21-known-red-ledger.md (39 measured at the r30 tail, 34 after the r30 re-anchor).'
+Write-Host 'docs/probe-21-known-red-ledger.md -- 39 reds measured at the r30 tail, 33 after the re-anchor'
+Write-Host 'and the criterion redraw the user approved (option 1: the shared sectionHead head is named).'
 Push-Location $here
 foreach ($probe in $probes) {
   $name = [System.IO.Path]::GetFileNameWithoutExtension($probe)
