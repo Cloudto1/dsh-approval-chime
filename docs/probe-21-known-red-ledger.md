@@ -34,7 +34,7 @@
 （原来的第 34 条已按用户裁决关闭，见 §4.3）。
 
 **抖动**：它自己有一段并发竞态测量（`r3/G1 (cross)`，20 轮 POST/GET 同时发），在这个受限沙箱里
-**同一份代码多次跑出 35 / 37 / 35** —— **三次里有两次**带着这 2 条红（`no round delivered the decision twice`、
+**同一份插件代码**（探针自身在各轮之间被改过）**多次跑出 35 / 37 / 35** —— **三次里有两次**带着这 2 条红（`no round delivered the decision twice`、
 `every round is one of the two legal outcomes`）；verify6 复核自己那次也带着它们（那次读数 **399/434、35 条**）。
 **这 0–2 条是计时抖动，不是产品问题**（插件字节每次完全相同）。
 
@@ -142,6 +142,11 @@ Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 
 | 建造函数定义在区域外、在区域里被调用 | **保留为已知洞（存量）** | verify7 实测可绕；**老规矩同样瞎**，本轮没改 |
 | 别的出口没列全（`el.outerHTML`、`document.write`） | **保留为已知洞（存量）** | 同上；用户本轮只选了"修我自己的那条弱点"，没选把出口列全（选项 C） |
 
+**尺子自身的一个"误报"方向（verify8 发现，**安全方向**）**：`endOfFunction()` 跳过字符串与注释，但**不跳正则字面量** ——
+如果标题栏里写了含大括号的正则（例如 `const re = /\}/;`），计数会提前收尾而**误报红**（实测：`/\}/` → inside=0 红，`/{/` → -1 红）。
+方向是**安全**的（只能多报、藏不住东西），而且该区域**目前一个正则字面量都没有**（实测）；
+区分"正则"与"除号"需要真解析代码结构，**未改**，已在探针注释里写明。
+
 **实测效果**：probe-21 从 400/434（34 条红）→ **402/435（33 条红）**（补洞后仍是 402/435、33 条红），
 两条相关断言都 PASS；体检每次 **EXIT=0**。
 
@@ -172,7 +177,7 @@ Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 
 
 | 内容 | 路径 |
 |---|---|
-| 各阶段 probe-21 原始日志 | `.scratch/audit-r30/probe21-{after-anchor,after-reanchor,run3,after-commit,after-redraw,after-banrestore}.log` |
+| 各阶段 probe-21 原始日志 | `.scratch/audit-r30/probe21-{after-anchor,after-reanchor,run3,after-commit,after-redraw,after-banrestore,after-htmlban,after-bracematch}.log` |
 | 各阶段红名单 | `.scratch/audit-r30/probe21-{after-reanchor,after-commit,after-redraw,after-banrestore,after-htmlban,after-bracematch}.failures.txt`（33 条的当前名单见 `after-bracematch`） |
 | 逐条清单（含 39 条时的原始分析） | `.scratch/audit-r30/probe21-red-list.md` |
 | 本轮修复报告（含独立复核结论） | `.scratch/audit-r30/fix-report-4-residuals.md` |

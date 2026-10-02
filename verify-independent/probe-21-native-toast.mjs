@@ -781,6 +781,12 @@ const NATIVE_BLOCK_HELPER = `function ${NATIVE_BLOCK_HELPER_NAME}(`;
  * after it, and the old slice swallowed the rogue call — total 3 / inside 3, judged green. Measured
  * by the verify7 round (each deviation ALONE reddened; only the trio did not). String literals and
  * comments are skipped so a brace inside them cannot close the function early.
+ *
+ * KNOWN FALSE-RED DIRECTION (verify8, safe side): a REGEX LITERAL that contains a brace — e.g.
+ * `const re = /\}/;` — is NOT skipped, so the counter can end the body early and the check then
+ * reports RED on code that is fine. The direction is safe (nothing can hide behind it), the region
+ * contains no regex literal today (measured), and telling a regex apart from a division needs real
+ * parsing; the ledger records it as known and unfixed.
  */
 function endOfFunction(text, from) {
   const open = text.indexOf('{', from);
