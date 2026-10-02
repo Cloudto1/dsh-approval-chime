@@ -26,7 +26,8 @@
 | 修完 4 条 + 无抖动 | 399/434 | 35 | `probe21-run3.log` |
 | **提交后（实测）** | **400/434** | **34** | `probe21-after-commit.log`；名单 `probe21-34-red-final.txt` |
 | **红线重画后（用户选 1，实测）** | **401/434** | **33** | `probe21-after-redraw.log`；名单 `probe21-after-redraw.failures.txt` |
-| **verify6 复核修正后（实测，当前）** | **402/435** | **33** | `probe21-after-banrestore.log`；名单 `probe21-after-banrestore.failures.txt`（总数 434→435：为"只有一份定义"单独立了一条断言） |
+| **verify6 复核修正后（实测）** | **402/435** | **33** | `probe21-after-banrestore.log`；名单 `probe21-after-banrestore.failures.txt`（总数 434→435：为"只有一份定义"单独立了一条断言） |
+| **补掉 innerHTML 洞后（实测，当前）** | **402/435** | **33** | `probe21-after-htmlban.log`；名单 `probe21-after-htmlban.failures.txt`（判据变严、红数不变：区域里这两处本来就是 0 次） |
 
 **33 条的实测构成**：**真机通知环境 25 条 · 证据缺失 8 条 · 待裁决 0 条** —— 与本文档 §4 的分组逐条吻合
 （原来的第 34 条已按用户裁决关闭，见 §4.3）。
@@ -105,12 +106,13 @@
 - `sectionHead()` 在整个 client 里**必须只有一份定义**（**单独的断言**，不再搭在区域判据里）；
 - 于是：**区域里多任何一处界面构造 → 红；标题栏里多写一个 `createElement` → 红；整块没有界面代码 → 绿**（回到老样子）。
 
-**可证伪性（实测，11/11 按声明）**：取证脚本**从探针源码里抽取判据原文**再求值（不是照抄一份）。
-Part A 八例：正本 → 绿；区域里加 `createElement` → 红；标题栏里加第四个 → 红；加 `MessageBox(` → 红；
+**可证伪性（实测，13/13 按声明）**：取证脚本**从探针源码里抽取判据原文**再求值（不是照抄一份）。
+Part A 十例：正本 → 绿；区域里加 `createElement` → 红；标题栏里加第四个 → 红；加 `MessageBox(` → 红；
 删掉标题栏（区域无界面代码）→ 绿；`Notification.requestPermission()` → 红；
-`new window.Notification('x')` → 红；`const N = window.Notification; new N('x')` → 红。
+`new window.Notification('x')` → 红；`const N = window.Notification; new N('x')` → 红；
+标题栏里写 `el.innerHTML = …` → 红；区域里写 `insertAdjacentHTML(…)` → 红。
 Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 2 → 红；全删 0 → 红。
-输出：`.scratch/audit-r30/native-block-redraw-check-v2.log`（旧版 `…-check.log` 为 5 例）。
+输出：`.scratch/audit-r30/native-block-redraw-check-v3.log`（v2 = 11 例，v1 = 5 例）。
 
 **第一版重画被 verify6 复核挑出 3 处，已修**（这是独立复核的价值所在）：
 
@@ -120,14 +122,15 @@ Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 
 2. **"只有一份定义"被短路**：区域里没有界面代码时判据会提前返回，**两份定义也能绿** → 已拆成**独立断言**。
 3. **措辞过宽**：写的是"钉死三个元素"，实际钉的是**三个 `createElement` 调用** → 已改成准确说法。
 
-**仍存在的洞（诚实记录，**等用户决定要不要补**）**：
+**洞的处理（用户已裁决）**：
 
-| 洞 | 能不能绕 | 老规矩抓得住吗 | 补的代价 |
-|---|---|---|---|
-| 标题栏里用 `innerHTML` / `insertAdjacentHTML` 加第四个元素 | 能（正本这两处在区域里是 0 次） | **也抓不住**（存量洞） | 便宜：区域里加一条禁令即可 |
-| `React['create'+'Element']` 这类拼接写法 | 能 | **也抓不住**（存量洞） | 贵：要真解析代码结构，不是找字 |
+| 洞 | 现在 | 说明 |
+|---|---|---|
+| 标题栏里用 `innerHTML` / `insertAdjacentHTML` 加第四个元素 | **已补**：区域里两条禁令 | 正本这两处本来就是 0 次，补了不影响正本；可证伪：两例都报红（见上面 13/13） |
+| `React['create'+'Element']` 这类拼接写法 | **保留为已知、已裁决的洞** | 老规矩也抓不住（存量洞）；要补得真解析代码结构（贵），**用户选择不付这个代价** |
 
-**实测效果**：probe-21 从 400/434（34 条红）→ **402/435（33 条红）**，两条相关断言都 PASS；体检一次 **EXIT=0**。
+**实测效果**：probe-21 从 400/434（34 条红）→ **402/435（33 条红）**（补洞后仍是 402/435、33 条红），
+两条相关断言都 PASS；体检每次 **EXIT=0**。
 
 ## 5. 防复发（本轮新增，已在体检里生效）
 
@@ -164,7 +167,7 @@ Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 
 | 独立复核报告（plan 甲 全套） | `.scratch/audit-r30/verification-of-plan-jia.md` |
 | 独立复核报告（红线重画 verify6） | `.scratch/audit-r30/verification-of-redraw.md` |
 | 横幅范围重量（node，含更正说明） | `.scratch/audit-r30/banner-range-check.log` |
-| 红线重画的可证伪性（11 例，当前版） | `.scratch/audit-r30/native-block-redraw-check-v2.log` |
+| 红线重画的可证伪性（13 例，当前版） | `.scratch/audit-r30/native-block-redraw-check-v3.log`（v2 = 11 例，v1 = 5 例） |
 | 各阶段 canonical 日志与退出码侧车 | `.scratch/audit-r30/canonical-*.log`、`canonical-*.exit.txt` |
 | probe-24 正本 + 三种坏账本日志 | `.scratch/audit-r30/probe24-{shipped,falsify-flip-sha,falsify-wrong-bytes,falsify-row-removed}.log` |
 | probe-23 CLI 契约 + 变异日志 | `.scratch/audit-r30/probe23-mutant.log`、`probe23-mutant.exit.txt` |

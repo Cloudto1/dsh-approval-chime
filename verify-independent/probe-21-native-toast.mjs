@@ -762,23 +762,26 @@ report.check(
  *   - "exactly ONE definition of the helper" is its own assertion below, because the region
  *     predicate returns early when the region is DOM-free and would have accepted a second
  *     definition unseen;
- *   - the pinned number is a count of createElement CALLS, not of elements: `innerHTML` /
- *     `insertAdjacentHTML` inside the helper could add a fourth element and stay green (measured by
- *     that round). Both are 0 in the region today; banning them is the user's call, and the ledger
- *     records it as an open offer — together with the text-matching limit that computed access
- *     (`React['create'+'Element']`) is invisible to this check, as it was to the old rule.
+ *   - the pinned number is a count of createElement CALLS, not of elements, which left one route open:
+ *     `innerHTML` / `insertAdjacentHTML` inside the helper could add a fourth element and stay green.
+ *     The user approved the follow-up ban, so BOTH are now forbidden in the region as well (each was
+ *     0 there, so the shipped tree is unaffected) — that route is closed. What stays open is the
+ *     limit of text matching itself: computed access such as `React['create'+'Element']` is invisible
+ *     to this check, exactly as it was to the old rule; the user chose not to pay for structural
+ *     parsing, and the ledger records that as a known, decided hole.
  */
 const NATIVE_BLOCK_HELPER_NAME = 'sectionHead';
 const NATIVE_BLOCK_HELPER = `function ${NATIVE_BLOCK_HELPER_NAME}(`;
 report.check(
-  `the native-notification block builds no UI of its own (no Notification, no MessageBox, no DOM outside the shared ${NATIVE_BLOCK_HELPER_NAME}() head)`,
+  `the native-notification block builds no UI of its own (no Notification, no MessageBox, no innerHTML/insertAdjacentHTML, no DOM outside the shared ${NATIVE_BLOCK_HELPER_NAME}() head)`,
   (() => {
     const start = CLIENT_SOURCE.indexOf('windows notifications');
     const end = CLIENT_SOURCE.indexOf('approval watch', start);
     if (start < 0 || end < 0) return false;
     const block = CLIENT_SOURCE.slice(start, end);
     readings.nativeBlockBytes = block.length;
-    if (/\bNotification\b/.test(block) || block.includes('MessageBox')) return false; // the OLD rule's whole-word ban, restored
+    if (/\bNotification\b/.test(block) || block.includes('MessageBox')
+      || block.includes('innerHTML') || block.includes('insertAdjacentHTML')) return false; // whole-word Notification = the OLD ban restored; the two HTML sinks = the user's follow-up ban
     const countIn = (text) => (text.match(/createElement/g) ?? []).length;
     const total = countIn(block);
     const helperSites = CLIENT_SOURCE.split(NATIVE_BLOCK_HELPER).length - 1;
