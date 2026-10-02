@@ -2,15 +2,21 @@
 node_modules/
 
 # local deployment tooling + scratch, kept local and not published:
-# mount.mjs / precheck.mjs are machine-specific, expected-package.json
-# contains absolute local paths
+# expected-package.json contains absolute local paths, and _raw/ / _shadow/ /
+# backup-*/ are machine state, not source.
 #
-# ...but the six native-toast scripts ARE source, not machine state: the manual page
-# (docs/native-toast-人工验收.md) drives them step by step, and the 2026-10-01 incident
-# showed what "kept local" costs — `tools/` was never committed and is gone. So this one
-# subdirectory is published while the machine-specific helpers stay out.
+# ...but the six native-toast scripts ARE source: the manual page
+# (docs/native-toast-人工验收.md) drives them step by step.
+#
+# 2026-10-02: mount.mjs and precheck.mjs moved IN here too. They used to be excluded as
+# "machine-specific", and the 2026-10-01 incident showed what that costs — `tools/` was
+# never committed and is gone. These two had just been modified with no copy anywhere in
+# the repository, which is the same exposure. They contain no absolute local paths: every
+# path they use comes from $DSH_HOME, the user home directory, or their own location.
 deploy/*
 !deploy/native-toast/
+!deploy/mount.mjs
+!deploy/precheck.mjs
 
 # verification artifacts: raw console/test dumps are not source
 verify-independent/_raw/
