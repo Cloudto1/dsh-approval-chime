@@ -29,7 +29,7 @@
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File uninstall.ps1
 #   powershell -NoProfile -ExecutionPolicy Bypass -File uninstall.ps1 -DryRun
-#   node tools/native-activate.mjs uninstall [--dry-run]
+#   node tools/native-toast.mjs uninstall [--dry-run]
 
 param(
     [switch]$DryRun
@@ -40,7 +40,22 @@ $ErrorActionPreference = 'Continue'
 $aumid = 'Dsh.ApprovalChime.NativeToast'
 $schemeKey = 'HKCU\Software\Classes\dsh-approval-chime'
 $aumidKey = 'HKCU\Software\Classes\AppUserModelId\' + $aumid
-$dshHome = if ([string]::IsNullOrWhiteSpace($env:DSH_HOME)) { Join-Path $env:USERPROFILE '.dsh' } else { $env:DSH_HOME }
+# The same home order install.ps1 uses: <DSH_HOME> when it carries a value, else
+# ~\.dsh. A home that cannot be resolved becomes $null HERE instead of being handed
+# to Join-Path, and the refusal below runs BEFORE the first reg.exe call (F-09):
+# with both variables empty this used to leave $markerPath $null, so the two
+# Test-Path checks fell through to "[skip] already absent" while the registry keys
+# were still deleted and the script still exited 0 - a half uninstall reported as
+# success, after which the Host kept reading the leftover marker as "installed"
+# and popped toasts whose buttons could no longer work.
+$dshHome = if ([string]::IsNullOrWhiteSpace($env:DSH_HOME)) {
+    if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) { $null } else { Join-Path $env:USERPROFILE '.dsh' }
+} else { $env:DSH_HOME }
+if ([string]::IsNullOrWhiteSpace($dshHome)) {
+    Write-Output '[FAIL] neither DSH_HOME nor USERPROFILE is usable; the install marker cannot be located'
+    Write-Output '       nothing was removed on purpose: the registry keys stay until the marker is reachable'
+    exit 1
+}
 $markerDir = Join-Path $dshHome 'approval-chime\native-toast'
 $markerPath = Join-Path $markerDir 'installed.json'
 

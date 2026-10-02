@@ -424,10 +424,10 @@ function Get-FailedAssertions {
 # added it to the run list). Re-anchoring this table is the ONLY edit a future revision should need
 # here (plus the two anchors in section 0c).
 $frozenManifest = @(
-  @{ path = 'lib\client.js';                bytes = 240875; sha = '63FB447DD6533BF615FC4AA820AE01D943BF5882C4B676EBAD9A615102336DEA' },
-  @{ path = 'lib\index.js';                 bytes = 52095;  sha = 'CD0CB30DB33F45B50E41724140FCB8C5C2EA3CACFB010DAC24D6E7CA68CC7062' },
-  @{ path = 'lib\native-toast.js';          bytes = 28623;  sha = '9E23DD249437C44875B9641E641A9C2857C36B33E5BE02F8D68F7EB7731861FA' },
-  @{ path = 'lib\native-bridge.js';         bytes = 25816;  sha = 'CA5FB926F7054E98C489E399DC216BCF9F9482F360199A97B5FB748FABF4BF72' },
+  @{ path = 'lib\client.js';                bytes = 244417; sha = '276D9DA484A3CC0B38F42C3D652EAA4F3F75B67DD0CEF3B4EB5A1676B0E717A8' },
+  @{ path = 'lib\index.js';                 bytes = 55458;  sha = '066BE96EF0E5C1E78D57E4EF55369FDB20B0550D17C0A238B413112EACF86A31' },
+  @{ path = 'lib\native-toast.js';          bytes = 29555;  sha = '6534B167056871E0EB00E5E1A66F9EFF41F3CDE0EBEDF1529F7B6579454821BB' },
+  @{ path = 'lib\native-bridge.js';         bytes = 27123;  sha = 'B0FE419DB341D2DBC16D6C4666C88C094481DA3A35A1C05E974B32DABED00264' },
   @{ path = 'verify\_harness.mjs';          bytes = 26777;  sha = 'EC74EBB6A326389A8CE29752C6B1F7DDD36E5B833EFECB164FC8E6C26DE9D439' },
   @{ path = 'verify\client-half.test.mjs';  bytes = 178293; sha = 'B7A702DFF975B7446CCD62DBD2B46B88A449D8066789788DFD646CD05E89F56B' },
   @{ path = 'verify\custom-audio.test.mjs'; bytes = 21465;  sha = '4AFBC7CB35D9CCA0EF7E8C2151827030ED15487A32DDF5FE2D8EF4DD4D587871' },
@@ -627,8 +627,8 @@ Write-Host ''
 Write-Host '=== 0c. the revision anchors this run asserts against, and the doc drift note ==='
 Write-Host 'rev-25 changed lib/client.js, lib/index.js, verify/ and added lib/native-toast.js + lib/native-bridge.js: both anchors below are re-pinned to the rev-25 bytes.'
 foreach ($row in @(
-    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 240875; sha = '63FB447DD6533BF615FC4AA820AE01D943BF5882C4B676EBAD9A615102336DEA' },
-    @{ path = (Join-Path $plugin 'lib\index.js'); bytes = 52095;  sha = 'CD0CB30DB33F45B50E41724140FCB8C5C2EA3CACFB010DAC24D6E7CA68CC7062' })) {
+    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 244417; sha = '276D9DA484A3CC0B38F42C3D652EAA4F3F75B67DD0CEF3B4EB5A1676B0E717A8' },
+    @{ path = (Join-Path $plugin 'lib\index.js'); bytes = 55458;  sha = '066BE96EF0E5C1E78D57E4EF55369FDB20B0550D17C0A238B413112EACF86A31' })) {
   $item = Get-Item $row.path
   $hash = (Get-FileHash $row.path -Algorithm SHA256).Hash
   $ok = ($item.Length -eq $row.bytes) -and ($hash -eq $row.sha)

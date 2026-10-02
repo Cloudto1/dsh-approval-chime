@@ -15,7 +15,7 @@
 ' The worker path is resolved relative to THIS file, so the activation keeps
 ' working if the plugin directory moves - the registry value is written from the
 ' same place by install.ps1, and both then agree without a second install step.
-Dim fso, uri, ps1, cmd, re
+Dim fso, uri, ps1, cmd, re, shell, interpreter
 uri = ""
 If WScript.Arguments.Count > 0 Then uri = WScript.Arguments(0)
 
@@ -30,5 +30,14 @@ If Not re.Test(uri) Then WScript.Quit 2
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 ps1 = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), "answer.ps1")
-cmd = """C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File """ & ps1 & """ -Uri """ & uri & """"
-CreateObject("WScript.Shell").Run cmd, 0, False
+' The interpreter is resolved from %SystemRoot% - the SAME rule install.ps1 uses when
+' it writes the registry command line (it joins $env:SystemRoot there). It used to be
+' the literal absolute path under C:, so on a machine whose Windows lives elsewhere
+' the install still succeeded, the registry still pointed here, and the click then
+' started nothing at all (this GUI host showed an error box instead). Only the PATH is
+' environment-derived: the whitelist above, the flag set below and the hidden window
+' are unchanged.
+Set shell = CreateObject("WScript.Shell")
+interpreter = fso.BuildPath(shell.ExpandEnvironmentStrings("%SystemRoot%"), "System32\WindowsPowerShell\v1.0\powershell.exe")
+cmd = """" & interpreter & """ -NoProfile -NonInteractive -ExecutionPolicy Bypass -File """ & ps1 & """ -Uri """ & uri & """"
+shell.Run cmd, 0, False

@@ -25,7 +25,7 @@
 #
 # Run it AFTER install.ps1:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File selftest.ps1
-#   node tools/native-activate.mjs selftest
+#   node tools/native-toast.mjs selftest
 #
 # Exit codes: 0 = every check passed, 1 = at least one check failed.
 

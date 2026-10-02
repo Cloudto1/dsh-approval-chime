@@ -23,8 +23,9 @@
 # without any shortcut still delivers and still enters Action Center, and the
 # header name comes from the AppUserModelId key written below.
 #
-# IDEMPOTENT: every write uses -Force (same value overwrites the same value) and
-# the marker file is rewritten in place. Running this twice changes nothing.
+# IDEMPOTENT: every VALUE write overwrites in place (same value, same spot), key
+# creation never uses -Force at all, and the marker file is rewritten in place.
+# Running this twice changes nothing.
 #
 # ASCII-only on purpose: Windows PowerShell 5.1 decodes a BOM-less UTF-8 script as
 # ANSI, so the Chinese copy below is built from code points instead of literals.
@@ -32,7 +33,7 @@
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1           # write it
 #   powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -DryRun   # show it, write nothing
-#   node tools/native-activate.mjs install [--dry-run]                       # same, from Node
+#   node tools/native-toast.mjs install [--dry-run]                          # same, from Node
 
 param(
     [switch]$DryRun
@@ -49,8 +50,17 @@ $scheme = 'dsh-approval-chime'
 $aumid = 'Dsh.ApprovalChime.NativeToast'
 $appIdVersion = 1
 
-if ([string]::IsNullOrEmpty($env:USERPROFILE)) {
-    Write-Output '[FAIL] USERPROFILE is not set; cannot resolve the marker directory'
+# The marker directory needs a home, and the home is <DSH_HOME> when it carries a
+# value - only otherwise ~\.dsh. That is the order line 77 below uses, and this
+# guard has to use it too: it used to test USERPROFILE FIRST and refuse even when
+# DSH_HOME was set, so an install run from a scheduled task or a service (an
+# environment that carries DSH_HOME but no USERPROFILE) printed
+# "[FAIL] USERPROFILE is not set" and installed nothing, while uninstall.ps1 in
+# that very environment worked - "installing does nothing, uninstalling works"
+# (F-08). DSH_HOME is tested with IsNullOrWhiteSpace, so a blank value does not
+# count as usable here.
+if ([string]::IsNullOrWhiteSpace($env:DSH_HOME) -and [string]::IsNullOrEmpty($env:USERPROFILE)) {
+    Write-Output '[FAIL] neither DSH_HOME nor USERPROFILE is set; cannot resolve the marker directory'
     exit 1
 }
 
@@ -94,7 +104,7 @@ $defaultName = '(default)'
 # how H3 shipped: the first write put the (default) value in, then the SECOND write
 # to the same scheme key ran `New-Item -Force` again and erased it, so the final key
 # held only `URL Protocol`. This helper therefore creates a key at most ONCE, and
-# only when Test-Path says it is not there - never with -Force on an existing key.
+# only when Test-Path says it is not there, ONE LEVEL AT A TIME and never with -Force.
 $script:ensuredKeys = @()
 
 function Ensure-RegKey {
@@ -105,17 +115,45 @@ function Ensure-RegKey {
         return $true
     }
     if ($DryRun) {
-        Write-Output ("[dry-run] New-Item -Path '" + $Path + "' -Force   (key does not exist yet; created once)")
+        Write-Output ("[dry-run] New-Item -Path '" + $Path + "'   (created once, only if absent; never with -Force)")
         $script:ensuredKeys += $Path
         return $true
     }
-    try {
-        New-Item -Path $Path -Force -ErrorAction Stop | Out-Null
+    # ONE LEVEL AT A TIME, and NEVER with -Force (F-10). Two installers can both pass
+    # the Test-Path above; whoever creates the key second must not re-create it,
+    # because -Force on a key that ALREADY EXISTS wipes every value it holds (the H3
+    # measurement quoted above). Without -Force an existing level is left untouched,
+    # and "it is already there" lands in the catch below, which then only CONFIRMS
+    # existence instead of wiping. The loop is needed because the provider creates a
+    # key only when its parent is there: shell\open\command needs shell first, which
+    # is exactly what -Force used to do for us.
+    $relative = $Path -replace '^HKCU:\\', ''
+    if ($relative -eq $Path) {
+        # Not an HKCU provider path: hand it to the provider unchanged, still no -Force.
+        try {
+            New-Item -Path $Path -ErrorAction Stop | Out-Null
+        } catch {
+            if (-not (Test-Path -LiteralPath $Path)) { return $false }
+        }
         $script:ensuredKeys += $Path
         return $true
-    } catch {
-        return $false
     }
+    $current = 'HKCU:'
+    foreach ($segment in $relative.Split('\')) {
+        if ($segment -eq '') { continue }
+        $current = $current + '\' + $segment
+        if (Test-Path -LiteralPath $current) { continue }
+        try {
+            New-Item -Path $current -ErrorAction Stop | Out-Null
+        } catch {
+            # Two installers can reach this line together; the loser only has to
+            # confirm the level exists now.
+            if (-not (Test-Path -LiteralPath $current)) { return $false }
+        }
+    }
+    $script:ensuredKeys += $Path
+    if (Test-Path -LiteralPath $Path) { return $true }
+    return $false
 }
 
 # Read one value back with the SAME readers selftest.ps1 has: the provider's
