@@ -32,7 +32,7 @@ const EVIDENCE = join(RAW, 'r24-evidence');
 mkdirSync(EVIDENCE, { recursive: true });
 const PLUGIN = join(HERE, '..');
 const CLIENT = join(PLUGIN, 'lib', 'client.js');
-const FROZEN = { sha256: 'C8631CA45ADBAC8ED84B7E3D10A8370ADE6E5A380902772FBC122744EE0DC04D', bytes: 237926 };
+const FROZEN = { sha256: '63FB447DD6533BF615FC4AA820AE01D943BF5882C4B676EBAD9A615102336DEA', bytes: 240875 };
 const EXPECTED_ROWS = 45;
 
 const digest = (buffer) => createHash('sha256').update(buffer).digest('hex').toUpperCase();

@@ -424,7 +424,7 @@ function Get-FailedAssertions {
 # added it to the run list). Re-anchoring this table is the ONLY edit a future revision should need
 # here (plus the two anchors in section 0c).
 $frozenManifest = @(
-  @{ path = 'lib\client.js';                bytes = 237926; sha = 'C8631CA45ADBAC8ED84B7E3D10A8370ADE6E5A380902772FBC122744EE0DC04D' },
+  @{ path = 'lib\client.js';                bytes = 240875; sha = '63FB447DD6533BF615FC4AA820AE01D943BF5882C4B676EBAD9A615102336DEA' },
   @{ path = 'lib\index.js';                 bytes = 52095;  sha = 'CD0CB30DB33F45B50E41724140FCB8C5C2EA3CACFB010DAC24D6E7CA68CC7062' },
   @{ path = 'lib\native-toast.js';          bytes = 28623;  sha = '9E23DD249437C44875B9641E641A9C2857C36B33E5BE02F8D68F7EB7731861FA' },
   @{ path = 'lib\native-bridge.js';         bytes = 25816;  sha = 'CA5FB926F7054E98C489E399DC216BCF9F9482F360199A97B5FB748FABF4BF72' },
@@ -434,7 +434,7 @@ $frozenManifest = @(
   @{ path = 'verify\host-half.test.mjs';    bytes = 33969;  sha = 'F3FD189914A03CC7D83BF5723C2A61543165BDAD0492D2537881B5F5DFE834DD' },
   @{ path = 'verify\native-toast.test.mjs'; bytes = 90281;  sha = '828281D1A7AB708F1E8BB05EC96A91845BD06B56F55DB7A5315FC721357A8618' },
   @{ path = 'verify\waterfall.test.mjs';    bytes = 8888;   sha = '010811A5D233C70B058198056BC73B1A9DE1B17560E8A76626F0FE6D4BD6EFC9' },
-  @{ path = 'package.json';                 bytes = 732;    sha = 'DEA1F6EAF86F2DBC8718CAB0B6F08AE6AF44F8210E0374A8B9270535CBD22F45' },
+  @{ path = 'package.json';                 bytes = 772;    sha = '0BEC8DABE616A62D8EB2B0E9718B28F049AEA29C0FBB4A8F68B7317C47FEA864' },
   @{ path = 'cordis.patch.yml';             bytes = 1043;   sha = '6F39C860C7531815A41DFEBEFC8775FAA1CC22062790B4A214CADCF64B4DFF9A' },
   @{ path = 'verify\settings-model.test.mjs'; bytes = 10967; sha = '680314D080F3700BDF6D7375387FF6F0117E99A1CD7E5B07664D0B4EABEFAE78' }
 )
@@ -627,7 +627,7 @@ Write-Host ''
 Write-Host '=== 0c. the revision anchors this run asserts against, and the doc drift note ==='
 Write-Host 'rev-25 changed lib/client.js, lib/index.js, verify/ and added lib/native-toast.js + lib/native-bridge.js: both anchors below are re-pinned to the rev-25 bytes.'
 foreach ($row in @(
-    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 237926; sha = 'C8631CA45ADBAC8ED84B7E3D10A8370ADE6E5A380902772FBC122744EE0DC04D' },
+    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 240875; sha = '63FB447DD6533BF615FC4AA820AE01D943BF5882C4B676EBAD9A615102336DEA' },
     @{ path = (Join-Path $plugin 'lib\index.js'); bytes = 52095;  sha = 'CD0CB30DB33F45B50E41724140FCB8C5C2EA3CACFB010DAC24D6E7CA68CC7062' })) {
   $item = Get-Item $row.path
   $hash = (Get-FileHash $row.path -Algorithm SHA256).Hash

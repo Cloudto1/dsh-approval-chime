@@ -39,7 +39,24 @@ import {
 } from '../lib/native-toast.js';
 
 const [command, ...rest] = process.argv.slice(2);
-const dryRun = rest.includes('--dry-run');
+
+/**
+ * t8 items 11/12 · the CLI refuses what it does not understand instead of guessing.
+ *
+ * "-DryRun" is PowerShell's own spelling and means the same thing here: a flag that was
+ * meant to make a run harmless must never be the reason a REAL run happens (that was the
+ * finding: "install -DryRun" really wrote the registry). An argument this file does not
+ * know is listed and answered with exit 2.
+ *
+ * "selftest" is the one command with NO dry-run mode: selftest.ps1 declares no -DryRun
+ * parameter, and Windows PowerShell 5.1 silently DROPS an undeclared switch — so promising
+ * a rehearsal and delivering a real toast is exactly what used to happen. It is refused
+ * here, with the two ways to get what the user actually wanted.
+ */
+const DRY_RUN_FLAGS = ['--dry-run', '-DryRun'];
+const KNOWN_COMMANDS = ['status', 'install', 'uninstall', 'selftest'];
+const dryRun = rest.some((flag) => DRY_RUN_FLAGS.includes(flag));
+const unknownFlags = rest.filter((flag) => !DRY_RUN_FLAGS.includes(flag));
 const home = nativeToastHome();
 
 /** The identity block: every value comes from the plugin, never from a literal here. */
@@ -51,6 +68,32 @@ function printIdentity() {
   console.log(`scheme           : ${NATIVE_TOAST_SCHEME}`);
   console.log(`marker           : ${nativeToastMarkerPath(home)}`);
   console.log(`installed        : ${existsSync(nativeToastMarkerPath(home)) ? `yes (${NATIVE_TOAST_MARKER})` : 'no'}`);
+}
+
+function usage() {
+  console.error('usage: native-toast.mjs <status|install|uninstall|selftest> [--dry-run]');
+  console.error('       --dry-run (also accepted as -DryRun) is handed to install.ps1 / uninstall.ps1');
+  console.error('       selftest has NO dry-run mode: it always raises one real test notification');
+  console.error('       deploy scripts live in ' + dirname(nativeToastScriptPath('install.ps1')));
+}
+
+if (typeof command !== 'string' || command.length === 0 || !KNOWN_COMMANDS.includes(command)) {
+  if (typeof command === 'string' && command.length > 0) console.error('unknown command: ' + command);
+  usage();
+  process.exit(2);
+}
+if (unknownFlags.length > 0) {
+  console.error('unknown argument(s): ' + unknownFlags.join(', '));
+  usage();
+  process.exit(2);
+}
+if (command === 'selftest' && dryRun) {
+  console.error('selftest has NO dry-run mode: it always raises one real test notification.');
+  console.error('deploy/native-toast/selftest.ps1 declares no -DryRun parameter, and Windows PowerShell');
+  console.error('silently drops an undeclared switch — passing it would raise the toast anyway.');
+  console.error('Run "node tools/native-toast.mjs selftest" to do it for real, or');
+  console.error('"node tools/native-toast.mjs status" for a read-only check that raises nothing.');
+  process.exit(2);
 }
 
 /** Run one deploy script and hand its exit status back to the caller. */
@@ -84,7 +127,8 @@ switch (command) {
     process.exit(runScript('selftest.ps1'));
     break;
   default:
-    console.error('usage: native-toast.mjs <status|install|uninstall|selftest> [--dry-run]');
-    console.error(`       deploy scripts live in ${dirname(nativeToastScriptPath('install.ps1'))}`);
+    // Unreachable: the command is validated above. Kept so a future edit that adds a case
+    // without extending KNOWN_COMMANDS still fails loudly instead of falling through.
+    usage();
     process.exit(2);
 }

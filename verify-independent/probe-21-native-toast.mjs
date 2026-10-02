@@ -130,7 +130,7 @@ const hashFile = (relative) => createHash('sha256').update(readFileSync(join(PLU
  * contract page t14 `4349F9EC…`/53941 → t4 `A516D2C6…`/61987.
  */
 const REVISION_ANCHORS = {
-  'lib/client.js': { sha256: 'c8631ca45adbac8ed84b7e3d10a8370ade6e5a380902772fbc122744ee0dc04d', bytes: 237926, note: 't22 UI grouping: the notification block is its own group, last on the page' },
+  'lib/client.js': { sha256: '63fb447dd6533bf615fc4aa820ae01d943bf5882c4b676ebad9a615102336dea', bytes: 240875, note: 't22 UI grouping: the notification block is its own group, last on the page' },
   'lib/native-toast.js': { sha256: '9e23dd249437c44875b9641e641a9c2857c36b33e5be02f8d68f7eb7731861fa', bytes: 28623, note: 't14 write path: unique temp + link publish' },
   'lib/native-bridge.js': { sha256: 'ca5fb926f7054e98c489e399dc216bcf9f9482f360199a97b5fb748fabf4bf72', bytes: 25816, note: 't14 EEXIST -> 409' },
   'lib/index.js': { sha256: 'cd0cb30db33f45b50e41724140fcb8c5c2ea3cacfb010dac24d6e7ca68cc7062', bytes: 52095, note: 't6 host half' },
@@ -643,7 +643,7 @@ report.check(
 const clientAnchor = anchorRows.find((row) => row.relative === 'lib/client.js');
 report.check(
   'lib/client.js is the rev-29 byte image of this round (the trigger source), not an older one',
-  clientAnchor?.actual === 'c8631ca45adbac8ed84b7e3d10a8370ade6e5a380902772fbc122744ee0dc04d' && clientAnchor?.actualBytes === 237926,
+  clientAnchor?.actual === '63fb447dd6533bf615fc4aa820ae01d943bf5882c4b676ebad9a615102336dea' && clientAnchor?.actualBytes === 240875,
   `${clientAnchor?.actual} / ${String(clientAnchor?.actualBytes)} B`,
 );
 
