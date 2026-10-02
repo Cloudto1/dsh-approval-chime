@@ -60,8 +60,19 @@
 | 产品 AUMID 那条 + 撤销 | 7 | `the product AUMID delivers a toast without any registry key being written — expected 0, got 5`；`History.Remove took the product own toast back off the screen` |
 | 200 字截断 / 转义字符两条边界 | 4 | `LoadXml accepts the 200-character truncated XML (raise exits 0) — expected 0, got 5`；`the escaped metacharacters survive as their literal characters` |
 
-**已核实**：本机**注册表协议键在、标记纸条也在（365 字节）** → 不是"通知没装好"，是受限会话里弹不出来/读不到。
-**唯一消除途径**：在一个正常的桌面会话里手工跑一次发布流程（屏幕上会真弹一条测试通知）。**不消除也不影响产品验收。**
+**已核实**：本机**注册表协议键在、标记纸条也在（365 字节）**、AUMID 注册键 `HKCU\Software\Classes\AppUserModelId\Dsh.ApprovalChime.NativeToast` 在（DisplayName=`DSH 通知提醒`）、Windows **25H2 / build 26200** —— 装机是齐的。
+
+**根因（2026-10-03 实测，不再是"原因不明"）**：**受限执行环境里 Windows 拒绝弹通知**。同一份环境跑
+`node tools/native-toast.mjs selftest`：
+
+| 跑法 | 结果 |
+|---|---|
+| 受限模式 | **失败**：`Show() failed: Exception calling "CreateToastNotifier" … "The process has no package identity." (HRESULT 0x80073D…)`；`History.GetHistory` 同样被拒；`SELFTEST FAIL (2 failing check(s))` |
+| 放宽权限跑同一条命令 | **通过**：`Show() returned without throwing`；`History.GetHistory('Dsh.ApprovalChime.NativeToast') -> 1 item(s)`；`SELFTEST PASS` |
+
+→ 这 25 条**在受限环境里永远不会绿**，但它们测的是**环境**，不是产品：DSH 应用进程不在该限制里。
+证据：`.scratch/audit-r30/selftest-real.log`（受限）、`.scratch/audit-r30/selftest-fullaccess.log`（放宽）。
+**这一类的产品侧行为已在真机上人工走通一次，见 §4.4。**
 
 ### 4.2 证据缺失，**补不回来**（8 条）
 
@@ -150,6 +161,25 @@ Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 
 **实测效果**：probe-21 从 400/434（34 条红）→ **402/435（33 条红）**（补洞后仍是 402/435、33 条红），
 两条相关断言都 PASS；体检每次 **EXIT=0**。
 
+### 4.4 真机验通一次（2026-10-03 凌晨，用户配合人工走通）—— 这一类不是"做不到"
+
+| 步骤 | 客观证据 |
+|---|---|
+| 待审批出现 | 代理发起一次**需要批准的无害操作**（`escalate sandbox to danger-full-access`，命令只打印一行字） |
+| **通知弹出** | 通知数据库在 **20:03:10.827Z（本地 04:03:10）** 出现一行：group `dsh-approval-chime`、tag `appr-05e9fd82253`、有效期 10 分钟；内容 = 标题「**DSH 需要你的授权**」+ 一行批准理由 + 两个按钮「接受」「拒绝」 |
+| **按钮回填** | 用户点通知上的「**拒绝**」→ 代理侧收到 rejected，该命令**未执行** |
+| **自动撤销** | 回填后再查：本插件 AUMID 的历史记录 **0 条**（通知被撤走，符合 §7 的设计） |
+
+抓取方式：一个每 2 秒扫一次 Windows 通知数据库（只读副本）的录像机，在 71 毫秒的间隔里拍到了那一行。
+证据：`.scratch/audit-r30/toast-recorder.log`、`.scratch/audit-r30/toast-root-cause.md`（本轮完整记录）。
+
+**意义**：§4.1 的 25 条由此定性为"**受限环境测不到**"，不是"产品做不到"——同一条产品路径
+（弹通知 + 两个按钮 + 结果回填 + 自动撤销）已在真机上真的跑通过一次。
+
+**触发条件（代码写死，排查时最容易踩的坑）**：客户端只在**新的待审批出现的那一刻、且 DSH 窗口不在最前面**
+时才发那一次请求；窗口在前台时**故意不弹**（`nativeRaise()` 里 `pageInForeground() === true` 直接返回）。
+所以在窗口里点"批准"**永远不会**弹通知 —— 这是设计，不是 bug；测试时必须先切走窗口、再让审批进来。
+
 ## 5. 防复发（本轮新增，已在体检里生效）
 
 - 新增 `verify-independent/probe-24-anchor-drift.mjs` 并登记进 `run-r13.ps1` 的探针清单：
@@ -190,3 +220,6 @@ Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 
 | 各阶段 canonical 日志与退出码侧车 | `.scratch/audit-r30/canonical-*.log`、`canonical-*.exit.txt` |
 | probe-24 正本 + 三种坏账本日志 | `.scratch/audit-r30/probe24-{shipped,falsify-flip-sha,falsify-wrong-bytes,falsify-row-removed}.log` |
 | probe-23 CLI 契约 + 变异日志 | `.scratch/audit-r30/probe23-mutant.log`、`probe23-mutant.exit.txt` |
+| 真机通知：受限 vs 放宽权限（同一条命令） | `.scratch/audit-r30/selftest-real.log`（受限，`no package identity`）、`selftest-fullaccess.log`（放宽，`SELFTEST PASS`） |
+| 真机验通：录像机抓到的通知原文 | `.scratch/audit-r30/toast-recorder.log` |
+| 真机验通的完整记录（含触发条件的坑） | `.scratch/audit-r30/toast-root-cause.md` |
