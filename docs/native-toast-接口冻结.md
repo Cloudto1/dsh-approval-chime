@@ -198,7 +198,7 @@ Set re = New RegExp
 re.Pattern = "^dsh-approval-chime://answer/\?[A-Za-z0-9%&=.?/_-]*$"
 If Not re.Test(uri) Then WScript.Quit 2
 ps1 = "<PS1>"
-cmd = """C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File """ & ps1 & """ -Uri """ & uri & """"
+cmd = """<系统盘>\System32\WindowsPowerShell\v1.0\powershell.exe"" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File """ & ps1 & """ -Uri """ & uri & """"
 CreateObject("WScript.Shell").Run cmd, 0, False
 ```
 

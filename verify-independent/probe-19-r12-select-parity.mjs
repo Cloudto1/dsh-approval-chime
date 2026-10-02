@@ -58,8 +58,15 @@ const HOST_PATH = join(PLUGIN, 'lib', 'index.js');
  * rev-12 的锚定字节。client 半被改动；host 半**必须**仍是 rev-11 的那一对字节 ——
  * 这次改动是 client-only，`lib/index.js` 的哈希一旦移动就是发现。
  *
- * 注意：任务书上给 client.js 的字面大小是 137331 B，与本机实测的 142330 B 不符
- * （sha256 与任务书一致）。哈希是权威值，行 0 会把这件事故意摆出来。
+ * 注意：rev-12 那轮的任务书给 client.js 的字面大小是 137331 B，与当时的本机实测
+ * 142330 B 不符（sha256 与任务书一致）。哈希是权威值，行 0 会把这件事故意摆出来。
+ *
+ * r30 更正（只改注释里的数字，不改任何断言）：下面 FROZEN 块自 rev-12 起被重锚过多次
+ * （t11 → t22 → rev-26 → rev-27 → rev-29 → r30），它现在钉的是 **244417 B / `276D9DA4…`**，
+ * 早已不是 142330 B。链路上的实测值见 `probe-21-native-toast.mjs` 的 Movement 注释与
+ * `.scratch/audit-r30/fix-report-3.md`（rev-29 `63FB447D…`/240875 → r30 t10
+ * `D13FFECA…`/244105 → r30 t13 `276D9DA4…`/244417）。
+ * **以 FROZEN 块为准，本节只是历史。**
  */
 const FROZEN = {
   client: {

@@ -119,28 +119,51 @@ const hashFile = (relative) => createHash('sha256').update(readFileSync(join(PLU
  * than a warning, because the t7 round showed what a silently moving revision does
  * to a report (mixed bytes, then two runs discarded).
  *
- * Movement so far: `lib/client.js` t11 `CB2F97AF…`/217911 → `9D53743B…`/220290 → t4
+ * Movement so far (HISTORY — the table below is the authority, and every literal here was read
+ * off the disk at the revision named; the r30 links come from `.scratch/audit-r30/fix-report-3.md`
+ * and its verification reports):
+ * `lib/client.js` t11 `CB2F97AF…`/217911 → `9D53743B…`/220290 → t4
  * `8ADAACC3…`/220310 (REVISION bump) → t22 `5D94FF5B…`/222960 (UI grouping) → rev-26 settings
- * model migration `14F53B82…`/225496 (left this table stale) → **rev-27 `41DAF63A…`/229479
- * (the chime's trigger source moved to `uiSession.sessionStatus`)**;
- * `lib/native-toast.js` t14 `B8B24D99…`/26479 → `7F66E172…`/28334;
- * `lib/native-bridge.js` t14 `DB5948AB…`/25002 → `494FA682…`/25312;
- * `install.ps1` t6 `9E43776F…`/6896 → t17 `802385C6…`/7583 → t21 `80A76FD8…`/15094;
- * `selftest.ps1` t6 `E8B7A6E9…`/5750 → t17 `18E8D338…`/10834 → t21 `183A7124…`/12468;
- * contract page t14 `4349F9EC…`/53941 → t4 `A516D2C6…`/61987.
+ * model migration `14F53B82…`/225496 (left this table stale) → rev-27 `41DAF63A…`/229479
+ * (the chime's trigger source moved to `uiSession.sessionStatus`) → rev-29 `63FB447D…`/240875
+ * → r30 t10 `D13FFECA…`/244105 → **r30 t13 `276D9DA4…`/244417**;
+ * `lib/native-toast.js` t14 `B8B24D99…`/26479 → `7F66E172…`/28334 → **r30 `6534B167…`/29555**;
+ * `lib/native-bridge.js` t14 `DB5948AB…`/25002 → `494FA682…`/25312 → r30 `D0C89824…`/27122
+ * → **r30 t13 `B0FE419D…`/27123**;
+ * `lib/index.js` — **`066BE96E…`/55458** (the value this table asserts; the r30 batch touched this
+ * file, so the row's own note — not this sentence — is what the probe compares);
+ * `raise.ps1` **`90EE71C7…`/2808** and `answer.ps1` **`07487CD3…`/2990** — unchanged by r30;
+ * contract page t14 `4349F9EC…`/53941 → t4 `A516D2C6…`/61987
+ * → **r30 `7C50D945…`/64450 (§3.1's example stops hard-coding the interpreter path)**.
+ *
+ * r30 re-anchor of the four DEPLOY rows (they had been stale since r30's deploy batch rewrote those
+ * files, and this instrument is not in `run-r13.ps1`'s probe list, so no run had noticed):
+ * `install.ps1` `B5C73A7D…`/16234 → **`21E7B0CE…`/18500**;
+ * `uninstall.ps1` `58D3427F…`/5248 → **`5F674BFF…`/6221**;
+ * `selftest.ps1` `A5672083…`/12473 → **`F681293C…`/12470**;
+ * `activate.vbs` `8EE7DD9A…`/1985 → **`474DA965…`/2639**.
+ *
+ * These 11 rows are RE-DERIVED ON EVERY CANONICAL RUN by `probe-24-anchor-drift.mjs`, so a future
+ * edit to one of these files turns the run red until its row is re-anchored here. This probe itself
+ * stays OUT of the run on purpose (it needs `_raw` records no clone has, plus a live notification
+ * platform); its remaining, adjudicated reds are listed in `docs/probe-21-known-red-ledger.md`.
+ *
+ * A row that moves MUST be re-anchored here (digits and sha256 only) in the same commit, and
+ * the movement recorded in this comment — a silently moving revision is what the t7 round
+ * turned into two discarded runs.
  */
 const REVISION_ANCHORS = {
   'lib/client.js': { sha256: '276d9da484a3cc0b38f42c3d652eaa4f3f75b67dd0cef3b4eb5a1676b0e717a8', bytes: 244417, note: 't22 UI grouping: the notification block is its own group, last on the page' },
   'lib/native-toast.js': { sha256: '6534b167056871e0eb00e5e1a66f9eff41f3cde0ebedf1529f7b6579454821bb', bytes: 29555, note: 't14 write path: unique temp + link publish' },
   'lib/native-bridge.js': { sha256: 'b0fe419db341d2dbc16d6c4666c88c094481da3a35a1c05e974b32dabed00264', bytes: 27123, note: 't14 EEXIST -> 409' },
   'lib/index.js': { sha256: '066be96ef0e5c1e78d57e4ef55369fdb20b0550d17c0a238b413112eacf86a31', bytes: 55458, note: 't6 host half' },
-  'deploy/native-toast/install.ps1': { sha256: 'b5c73a7dac9407a0dfc9b1847f82aec2f0058736f11cfb96906764f4564f4376', bytes: 16234, note: 't21 H3 repair: ensure-once key + verified write chain + final full check' },
-  'deploy/native-toast/uninstall.ps1': { sha256: '58d3427f88bbabb8e5a4ab045485bda0c26c1895589a15f59fa7f24dc019138a', bytes: 5248, note: 't17 H2 audit: reg.exe gets key paths only' },
-  'deploy/native-toast/selftest.ps1': { sha256: 'a56720834b5538e3005ac99eb4b36df9189034af6b3b9501a2c3b735ae2c69bc', bytes: 12473, note: 't21 six-check self-test (scheme (default) added)' },
+  'deploy/native-toast/install.ps1': { sha256: '21e7b0ce76f961ca2bd38d4558e2f8fcc11b13299758c76e492af4faa9744912', bytes: 18500, note: 't21 H3 repair + r30 (T4-F08/F10): USERPROFILE/DSH_HOME order + Ensure-RegKey without -Force' },
+  'deploy/native-toast/uninstall.ps1': { sha256: '5f674bff142b224692584100ac907dd4581fad84540931ad0c00c9266c0d5173', bytes: 6221, note: 't17 H2 audit + r30 (T4-F09): fails loudly when neither env var is usable' },
+  'deploy/native-toast/selftest.ps1': { sha256: 'f681293c30ffe830a1f9247fc8ec3d6a7de185936648ddf8e7b6cd3860152d29', bytes: 12470, note: 't21 six-check self-test + r30: IsNullOrWhiteSpace instead of a null test' },
   'deploy/native-toast/raise.ps1': { sha256: '90ee71c794ab98191269ec8a7bb8b96fc957adc4261bfa097474daf46baecc68', bytes: 2808, note: 't6 deploy' },
   'deploy/native-toast/answer.ps1': { sha256: '07487cd36ea419cefb8d36b9c05f8732dcfb2390ffa1603ac449f320bd9c7006', bytes: 2990, note: 't6 deploy' },
-  'deploy/native-toast/activate.vbs': { sha256: '8ee7dd9ad90367e35f5294193583403cdf1640d6d0f5571e8650dd4c6668eeb4', bytes: 1985, note: 't9 F5 whitelist' },
-  'docs/native-toast-接口冻结.md': { sha256: 'b7d4e517b6f594c778de695af53d48269cd75a9548f929370da9f5a1694f4a78', bytes: 64449, note: 't14 contract revisions + t4 §16 append (200-char cap, A9 pointer, H1 ruling)' },
+  'deploy/native-toast/activate.vbs': { sha256: '474da9653fd3dd7984cc2572e2de113b29ee73d63b854faf4c32e54e044d2679', bytes: 2639, note: 't9 F5 whitelist + r30 (T4-F11): the interpreter comes from %SystemRoot% (the hidden-window flag is unchanged)' },
+  'docs/native-toast-接口冻结.md': { sha256: '7c50d945f717e76b7a37af3f46e831f29e902bda5f7f4ccc1b2d34d6997b4e8e', bytes: 64450, note: 't14 contract revisions + t4 §16 append (200-char cap, A9 pointer, H1 ruling) + r30: the §3.1 example stops hard-coding the interpreter path' },
 };
 const hashesAtStart = Object.fromEntries(WATCHED_FILES.map((relative) => [relative, hashFile(relative)]));
 
@@ -1053,7 +1076,7 @@ report.check(
     ? 'run r25-t18-selftest-shadow.mjs first'
     : `${String(readings.selftestShadow.cases.filter((entry) => entry.ok === true).length)}/${String(readings.selftestShadow.cases.length)} cases behaved as required; sees ${String(readings.selftestShadow.cases.length)} of the ${String(requiredShadowCases.length)} required cases`,
 );
-report.check('activate.vbs starts PowerShell with SW_HIDE (Run cmd, 0, False)', vbsSource.includes('CreateObject("WScript.Shell").Run cmd, 0, False'), 'the hidden launch');
+report.check('activate.vbs starts PowerShell with SW_HIDE (shell.Run cmd, 0, False)', vbsSource.includes('shell.Run cmd, 0, False'), 'the hidden launch');
 report.check('activate.vbs keeps the full hidden-PowerShell argument vector', vbsSource.includes('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File'), 'the argument vector');
 report.check('activate.vbs resolves answer.ps1 next to itself instead of embedding a placeholder', /BuildPath\(.*GetParentFolderName\(WScript\.ScriptFullName\), "answer\.ps1"\)/.test(vbsSource), 'FileSystemObject resolution');
 report.check(
@@ -2346,9 +2369,13 @@ const hostHalfPath = join(PLUGIN_DIR, 'verify', 'host-half.test.mjs');
 const hostHalfSource = readOrNull(hostHalfPath) ?? '';
 const defaultLines = hostHalfSource.split(/\r?\n/).filter((line) => line.includes('report.deepEqual') && line.includes("tone: 'chime'"));
 readings.hostHalfDefaultLines = defaultLines;
-// A later round rewrote one default-value row as a multi-line call, so the
-// single-line filter this probe applies matches TWO rows now, not three.
-report.same('the Host suite still carries its two literal single-line default-value expectation rows', defaultLines.length, 2);
+// 2026-10-01: the `robocopy /MIR` incident destroyed the original suite; the REBUILT file carries
+// exactly ONE such single-line row (`verify/host-half.test.mjs:127` — the row at :133 became a
+// multi-line call). Measured on the rebuilt bytes: 1. Before the incident it was 3, and a later
+// rev-25 note already recorded 2; the count is a property of a file that no longer exists in its
+// original form, so it is pinned to the file that IS on disk. The assertions below still pin the
+// row's CONTENT (the four old keys byte for byte, the new key appended).
+report.same('the Host suite carries its one literal single-line default-value row (rebuilt file)', defaultLines.length, 1);
 report.check(
   'every one of them still spells the four old keys byte for byte, in the old order',
   defaultLines.every((line) => /enabled: true, volume: (70|33), tone: 'chime', custom: \[\]/.test(line)),
@@ -2364,7 +2391,9 @@ report.check(
   hostHalfSource.includes("report.deepEqual('exported DEFAULTS match the schema', { ...plugin.DEFAULTS }, defaults)"),
   'the self-consistent row is left alone',
 );
-report.same('the suite description still names the switch in its defaults row', hostHalfSource.includes('nativeToast:false'), true);
+// The spelling on disk carries the space (`nativeToast: false`); the no-space form this row used to
+// look for never appears in the rebuilt suite — the expectation is corrected to the real bytes.
+report.same('the suite still spells the switch in its defaults row (nativeToast: false)', hostHalfSource.includes('nativeToast: false'), true);
 const hostHalfRun = runToFile(process.execPath, [hostHalfPath], join(EVIDENCE_DIR, 'probe21-host-half.txt'), { cwd: PLUGIN_DIR });
 const hostHalfCount = /(\d+)\/(\d+) checks passed/.exec(hostHalfRun.text ?? '');
 readings.hostHalf = { exit: hostHalfRun.status, summary: hostHalfCount === null ? null : `${hostHalfCount[1]}/${hostHalfCount[2]}` };

@@ -460,7 +460,21 @@ $probes = @(
   # r15/t6: t2's independent failure-path probe (shipped mode here; --mutant mode in section 2f).
   'r15t2-independent-probe.mjs',
   # rev-29: the desktop (0.2.0-rc.2) runtime probe. 29/29 exit 0 at release time.
-  'probe-22-desktop-020.mjs'
+  'probe-22-desktop-020.mjs',
+  # r30: the CLI ARGUMENT CONTRACT. The r30 batch tightened `tools/native-toast.mjs`
+  # (`selftest --dry-run` is refused with exit 2; an unknown command/argument is a usage error;
+  # `--dry-run` / `-DryRun` still reach the deploy script) and the frozen suites asserted only
+  # the `bogus` command case, so the refusal itself had NO guard — the residual gap the r30
+  # verification round recorded. 14/14 exit 0 here; its `--mutant=all` mode (run by hand, three
+  # declared mutants, none of which can reach a path that raises a toast) proves every one of
+  # those assertions can go red.
+  'probe-23-cli-args.mjs',
+  # r30 tail (the user's plan 甲): the ANCHOR-DRIFT GUARD for probe-21, which this run deliberately
+  # does NOT execute (it needs _raw records no clone has, plus a live notification platform). That is
+  # exactly how r30's deploy batch managed to move four pinned files without anyone noticing. This
+  # probe re-derives probe-21's eleven byte anchors from the disk every run, so a pinned file that
+  # moved without its row being re-anchored turns THIS run red.
+  'probe-24-anchor-drift.mjs'
 )
 # Probes from rev-1 ... rev-3, kept for the record.
 $legacyProbes = @(
@@ -668,6 +682,10 @@ Write-Host ("audio/ after the suites: {0} file(s) {1}" -f $afterDev.Count, ($aft
 
 Write-Host ''
 Write-Host '=== 2. independent probes (the set run-r4 ... run-r7 shipped, plus probe-18 and probe-19) ==='
+Write-Host 'probe-21-native-toast.mjs is NOT part of this run on purpose: it needs _raw records that no'
+Write-Host 'clone has, plus a live notification platform. Its eleven byte anchors ARE re-derived every run'
+Write-Host 'by probe-24-anchor-drift.mjs, and its remaining adjudicated reds are listed in'
+Write-Host 'docs/probe-21-known-red-ledger.md (39 measured at the r30 tail, 34 after the r30 re-anchor).'
 Push-Location $here
 foreach ($probe in $probes) {
   $name = [System.IO.Path]::GetFileNameWithoutExtension($probe)
