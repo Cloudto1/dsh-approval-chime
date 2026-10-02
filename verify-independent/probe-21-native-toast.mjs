@@ -772,6 +772,54 @@ report.check(
  */
 const NATIVE_BLOCK_HELPER_NAME = 'sectionHead';
 const NATIVE_BLOCK_HELPER = `function ${NATIVE_BLOCK_HELPER_NAME}(`;
+
+/**
+ * The index just past the `}` that closes the function starting at `from` — found by MATCHING
+ * BRACES, not by looking for a text pattern. The first version of this check searched for
+ * `'\n      }'`, which made the helper's extent a function of its INDENTATION: reduce the helper to
+ * two createElement calls, re-indent its closing brace by two spaces and drop a rogue createElement
+ * after it, and the old slice swallowed the rogue call — total 3 / inside 3, judged green. Measured
+ * by the verify7 round (each deviation ALONE reddened; only the trio did not). String literals and
+ * comments are skipped so a brace inside them cannot close the function early.
+ */
+function endOfFunction(text, from) {
+  const open = text.indexOf('{', from);
+  if (open < 0) return -1;
+  let depth = 0;
+  for (let index = open; index < text.length; index += 1) {
+    const ch = text[index];
+    const next = text[index + 1];
+    if (ch === "'" || ch === '"' || ch === '`') {
+      let cursor = index + 1;
+      while (cursor < text.length) {
+        if (text[cursor] === '\\') { cursor += 2; continue; }
+        if (text[cursor] === ch) break;
+        cursor += 1;
+      }
+      if (cursor >= text.length) return -1;
+      index = cursor;
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      const eol = text.indexOf('\n', index);
+      if (eol < 0) return -1;
+      index = eol;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      const close = text.indexOf('*/', index + 2);
+      if (close < 0) return -1;
+      index = close + 1;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+  }
+  return -1;
+}
 report.check(
   `the native-notification block builds no UI of its own (no Notification, no MessageBox, no innerHTML/insertAdjacentHTML, no DOM outside the shared ${NATIVE_BLOCK_HELPER_NAME}() head)`,
   (() => {
@@ -789,7 +837,7 @@ report.check(
     readings.nativeBlockDom = { total, helperSites, helperAt };
     if (total === 0) return true; // the region is DOM-free: the original shape, still allowed
     if (helperAt < 0 || helperSites !== 1) return false; // DOM outside the approved exception
-    const helperEnd = block.indexOf('\n      }', helperAt);
+    const helperEnd = endOfFunction(block, helperAt);
     if (helperEnd < 0) return false;
     const inside = countIn(block.slice(helperAt, helperEnd));
     readings.nativeBlockDom.inside = inside;

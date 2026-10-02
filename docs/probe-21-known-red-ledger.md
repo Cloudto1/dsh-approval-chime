@@ -27,14 +27,16 @@
 | **提交后（实测）** | **400/434** | **34** | `probe21-after-commit.log`；名单 `probe21-34-red-final.txt` |
 | **红线重画后（用户选 1，实测）** | **401/434** | **33** | `probe21-after-redraw.log`；名单 `probe21-after-redraw.failures.txt` |
 | **verify6 复核修正后（实测）** | **402/435** | **33** | `probe21-after-banrestore.log`；名单 `probe21-after-banrestore.failures.txt`（总数 434→435：为"只有一份定义"单独立了一条断言） |
-| **补掉 innerHTML 洞后（实测，当前）** | **402/435** | **33** | `probe21-after-htmlban.log`；名单 `probe21-after-htmlban.failures.txt`（判据变严、红数不变：区域里这两处本来就是 0 次） |
+| **补掉 innerHTML 洞后（实测）** | **402/435** | **33** | `probe21-after-htmlban.log`；名单 `probe21-after-htmlban.failures.txt`（判据变严、红数不变：区域里这两处本来就是 0 次） |
+| **"数括号"修正后（实测，当前）** | **402/435** | **33** | `probe21-after-bracematch.log`；名单 `probe21-after-bracematch.failures.txt`（修的是尺子自身的假绿，红数不变） |
 
 **33 条的实测构成**：**真机通知环境 25 条 · 证据缺失 8 条 · 待裁决 0 条** —— 与本文档 §4 的分组逐条吻合
 （原来的第 34 条已按用户裁决关闭，见 §4.3）。
 
 **抖动**：它自己有一段并发竞态测量（`r3/G1 (cross)`，20 轮 POST/GET 同时发），在这个受限沙箱里
-**同一份代码三次跑出 35 / 37 / 35** —— 其中一次有 2 条红（`no round delivered the decision twice`、
-`every round is one of the two legal outcomes`）。**这 0–2 条是计时抖动，不是产品问题**（插件字节三次完全相同）。
+**同一份代码多次跑出 35 / 37 / 35** —— **三次里有两次**带着这 2 条红（`no round delivered the decision twice`、
+`every round is one of the two legal outcomes`）；verify6 复核自己那次也带着它们（那次读数 **399/434、35 条**）。
+**这 0–2 条是计时抖动，不是产品问题**（插件字节每次完全相同）。
 
 ## 3. 本轮已关闭的 6 条（裁决 **甲** = 修；下面第一条按用户**选 1** 重画判据，详见 §4.3）
 
@@ -106,13 +108,15 @@
 - `sectionHead()` 在整个 client 里**必须只有一份定义**（**单独的断言**，不再搭在区域判据里）；
 - 于是：**区域里多任何一处界面构造 → 红；标题栏里多写一个 `createElement` → 红；整块没有界面代码 → 绿**（回到老样子）。
 
-**可证伪性（实测，13/13 按声明）**：取证脚本**从探针源码里抽取判据原文**再求值（不是照抄一份）。
-Part A 十例：正本 → 绿；区域里加 `createElement` → 红；标题栏里加第四个 → 红；加 `MessageBox(` → 红；
+**可证伪性（实测，14/14 按声明）**：取证脚本**从探针源码里抽取判据原文**再求值（不是照抄一份；
+`endOfFunction` 也是从探针里抽的，不是复写一份）。
+Part A 十一例：正本 → 绿；区域里加 `createElement` → 红；标题栏里加第四个 → 红；加 `MessageBox(` → 红；
 删掉标题栏（区域无界面代码）→ 绿；`Notification.requestPermission()` → 红；
 `new window.Notification('x')` → 红；`const N = window.Notification; new N('x')` → 红；
-标题栏里写 `el.innerHTML = …` → 红；区域里写 `insertAdjacentHTML(…)` → 红。
+标题栏里写 `el.innerHTML = …` → 红；区域里写 `insertAdjacentHTML(…)` → 红；
+**"三处同时改"的假绿（标题栏减成 2 次调用 + 结束大括号缩进改两格 + 后面塞一个 rogue 调用）→ 红**。
 Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 2 → 红；全删 0 → 红。
-输出：`.scratch/audit-r30/native-block-redraw-check-v3.log`（v2 = 11 例，v1 = 5 例）。
+输出：`.scratch/audit-r30/native-block-redraw-check-v4.log`（v3 = 13 例，v2 = 11 例，v1 = 5 例）。
 
 **第一版重画被 verify6 复核挑出 3 处，已修**（这是独立复核的价值所在）：
 
@@ -122,12 +126,21 @@ Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 
 2. **"只有一份定义"被短路**：区域里没有界面代码时判据会提前返回，**两份定义也能绿** → 已拆成**独立断言**。
 3. **措辞过宽**：写的是"钉死三个元素"，实际钉的是**三个 `createElement` 调用** → 已改成准确说法。
 
+**verify7 复核（补完 innerHTML 洞之后）又指出一条"我自己的尺子"的弱点，已修**：
+
+4. **假绿（不安全方向）**：标题栏"到哪儿结束"原来是**找文字**（`indexOf('\n      }')`），于是把
+   ①标题栏减成 2 次调用 ②结束大括号缩进改两格 ③后面塞一个 rogue 调用 —— **三处同时改**就能骗过
+   （单独改任何一处都会报红，是 verify7 实测的 M1）。→ 已改成**数括号**（跳过字符串与注释），
+   `endOfFunction()` 现在按真正的大括号配对找结束位置；上面 14/14 里那条"三处同时改"已实测**报红**。
+
 **洞的处理（用户已裁决）**：
 
 | 洞 | 现在 | 说明 |
 |---|---|---|
-| 标题栏里用 `innerHTML` / `insertAdjacentHTML` 加第四个元素 | **已补**：区域里两条禁令 | 正本这两处本来就是 0 次，补了不影响正本；可证伪：两例都报红（见上面 13/13） |
-| `React['create'+'Element']` 这类拼接写法 | **保留为已知、已裁决的洞** | 老规矩也抓不住（存量洞）；要补得真解析代码结构（贵），**用户选择不付这个代价** |
+| 标题栏里用 `innerHTML` / `insertAdjacentHTML` 加第四个元素 | **已补**：区域里两条禁令 | 正本这两处本来就是 0 次，补了不影响正本；可证伪：两例都报红（见上面 14/14） |
+| 拼接成员名绕开**所有**字面禁令（`React['create'+'Element']`、`el['inner'+'HTML']` …） | **保留为已知、已裁决的洞** | 文字匹配**天生**看不见（老规矩也一样）；要补得真解析代码结构（贵），**用户选择不付这个代价** |
+| 建造函数定义在区域外、在区域里被调用 | **保留为已知洞（存量）** | verify7 实测可绕；**老规矩同样瞎**，本轮没改 |
+| 别的出口没列全（`el.outerHTML`、`document.write`） | **保留为已知洞（存量）** | 同上；用户本轮只选了"修我自己的那条弱点"，没选把出口列全（选项 C） |
 
 **实测效果**：probe-21 从 400/434（34 条红）→ **402/435（33 条红）**（补洞后仍是 402/435、33 条红），
 两条相关断言都 PASS；体检每次 **EXIT=0**。
@@ -141,7 +154,7 @@ Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 
   正本 5/5 通过、exit 0。日志：`.scratch/audit-r30/probe24-{shipped,falsify-*}.log`。
 - 体检输出里印明：probe-21 是**有意不跑**的发布轮仪器，它的锚由 probe-24 每轮复核，已知红见本文件。
 - 与本轮无关、但已知的一条（独立复核顺手记下的）：`probe-13-r4-browser.mjs` 的红集**没有逐条钉住**
-  （这个沙箱里没有浏览器引擎，`run-r13.ps1:508-512` 已声明容忍）。**既有状态，不是本轮引入的。**
+  （这个沙箱里没有浏览器引擎，`run-r13.ps1:495` 已声明容忍）。**既有状态，不是本轮引入的。**
 
 ## 6. 怎么才能让它真正"全绿"
 
@@ -160,14 +173,15 @@ Part B 三例（"只有一份定义"）：正本 1 → 绿；加第二份定义 
 | 内容 | 路径 |
 |---|---|
 | 各阶段 probe-21 原始日志 | `.scratch/audit-r30/probe21-{after-anchor,after-reanchor,run3,after-commit,after-redraw,after-banrestore}.log` |
-| 各阶段红名单 | `.scratch/audit-r30/probe21-{after-reanchor,after-commit,after-redraw,after-banrestore}.failures.txt`（33 条的当前名单见 `after-banrestore`） |
+| 各阶段红名单 | `.scratch/audit-r30/probe21-{after-reanchor,after-commit,after-redraw,after-banrestore,after-htmlban,after-bracematch}.failures.txt`（33 条的当前名单见 `after-bracematch`） |
 | 逐条清单（含 39 条时的原始分析） | `.scratch/audit-r30/probe21-red-list.md` |
 | 本轮修复报告（含独立复核结论） | `.scratch/audit-r30/fix-report-4-residuals.md` |
 | 独立复核报告（甲） | `.scratch/audit-r30/verification-of-fix-4-residuals.md` |
 | 独立复核报告（plan 甲 全套） | `.scratch/audit-r30/verification-of-plan-jia.md` |
 | 独立复核报告（红线重画 verify6） | `.scratch/audit-r30/verification-of-redraw.md` |
 | 横幅范围重量（node，含更正说明） | `.scratch/audit-r30/banner-range-check.log` |
-| 红线重画的可证伪性（13 例，当前版） | `.scratch/audit-r30/native-block-redraw-check-v3.log`（v2 = 11 例，v1 = 5 例） |
+| 红线重画的可证伪性（14 例，当前版） | `.scratch/audit-r30/native-block-redraw-check-v4.log`（v3 = 13，v2 = 11，v1 = 5） |
+| 独立复核报告（补洞后 verify7） | `.scratch/audit-r30/verification-of-htmlban.md` |
 | 各阶段 canonical 日志与退出码侧车 | `.scratch/audit-r30/canonical-*.log`、`canonical-*.exit.txt` |
 | probe-24 正本 + 三种坏账本日志 | `.scratch/audit-r30/probe24-{shipped,falsify-flip-sha,falsify-wrong-bytes,falsify-row-removed}.log` |
 | probe-23 CLI 契约 + 变异日志 | `.scratch/audit-r30/probe23-mutant.log`、`probe23-mutant.exit.txt` |
