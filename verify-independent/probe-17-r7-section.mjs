@@ -743,11 +743,11 @@ report.group('0. the bytes under test are the shipped ones');
 report.note('file', CLIENT_PATH);
 report.note('bytes', CLIENT_BYTES);
 report.note('sha256', CLIENT_SHA256);
-report.same('lib/client.js byte count is what rev-29 claims', CLIENT_BYTES, 244417);
+report.same('lib/client.js byte count is what rev-29 claims', CLIENT_BYTES, 258008);
 report.same(
   'lib/client.js sha256 is what rev-29 claims',
   CLIENT_SHA256,
-  '276D9DA484A3CC0B38F42C3D652EAA4F3F75B67DD0CEF3B4EB5A1676B0E717A8',
+  '6A7905CDDF909FAABAF93C993C66A8D20007E5437E3285DADAEB5AD26CE3CF1A',
 );
 report.same('lib/client.js has no top-level import/export (it is a classic script)', /^import |^export /m.test(CLIENT_SOURCE), false);
 
@@ -939,7 +939,7 @@ report.same('the file input is the hidden one', file?.props.className, 'dacFile'
 report.check('the file input is hidden by injected CSS rather than absent', /\.dacCard \.dacFile\{display:none;\}/.test(stylesheet ?? ''), (stylesheet ?? '').match(/\.dacCard \.dacFile\{[^}]*\}/)?.[0]);
 
 const buttons = byType(tree, 'button');
-report.deep('the visible actions are import / preview / reset (no custom tone selected yet)', buttonTexts(tree), ['导入音频', '试听', '恢复默认']);
+report.deep('the visible actions are import / preview / reset / the notification test button (no custom tone selected yet)', buttonTexts(tree), ['导入音频', '试听', '恢复默认', '测试通知']);
 report.check('the import button carries the custom-tone hint', typeof buttons[0]?.props?.title === 'string' && buttons[0].props.title.length > 0, buttons[0]?.props?.title);
 report.same('the preview button is enabled while the chime is on', buttons.find((node) => textOf(node) === '试听')?.props.disabled, false);
 report.same('the preview button plays the current tone', typeof buttons.find((node) => textOf(node) === '试听')?.props.onClick, 'function');
@@ -992,7 +992,7 @@ const customTree = customView.react.draw(customSection, {});
 customView.react.runEffects();
 report.check('an imported tone is rendered as an option', byType(customTree, 'option').some((option) => option.props.value === customValue.tone), JSON.stringify(byType(customTree, 'option').map((option) => option.props.value)));
 report.same('the roster name is the option label', textOf(byType(customTree, 'option')[0]), 'door.wav');
-report.deep('the actions are now import / 移除 / preview / reset', buttonTexts(customTree), ['导入音频', '移除', '试听', '恢复默认']);
+report.deep('the actions are now import / 移除 / preview / reset / the notification test button', buttonTexts(customTree), ['导入音频', '移除', '试听', '恢复默认', '测试通知']);
 report.same('the 移除 button is enabled while writable', byType(customTree, 'button').find((node) => textOf(node) === '移除')?.props.disabled, false);
 report.check('the roster puts imported tones before the built-ins', textOf(byType(customTree, 'option')[1]) === '风铃 chime', JSON.stringify(byType(customTree, 'option').map(textOf)));
 

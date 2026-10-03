@@ -126,7 +126,9 @@ const hashFile = (relative) => createHash('sha256').update(readFileSync(join(PLU
  * `8ADAACC3…`/220310 (REVISION bump) → t22 `5D94FF5B…`/222960 (UI grouping) → rev-26 settings
  * model migration `14F53B82…`/225496 (left this table stale) → rev-27 `41DAF63A…`/229479
  * (the chime's trigger source moved to `uiSession.sessionStatus`) → rev-29 `63FB447D…`/240875
- * → r30 t10 `D13FFECA…`/244105 → **r30 t13 `276D9DA4…`/244417**;
+ * → r30 t10 `D13FFECA…`/244105 → r30 t13 `276D9DA4…`/244417 → r30 tail (the notification
+ * test button) `F1B3B3B6…`/253603 → **r30 tail (flood control + the switch-reset fix)
+ * `6A7905CD…`/258008**;
  * `lib/native-toast.js` t14 `B8B24D99…`/26479 → `7F66E172…`/28334 → **r30 `6534B167…`/29555**;
  * `lib/native-bridge.js` t14 `DB5948AB…`/25002 → `494FA682…`/25312 → r30 `D0C89824…`/27122
  * → **r30 t13 `B0FE419D…`/27123**;
@@ -153,7 +155,7 @@ const hashFile = (relative) => createHash('sha256').update(readFileSync(join(PLU
  * turned into two discarded runs.
  */
 const REVISION_ANCHORS = {
-  'lib/client.js': { sha256: '276d9da484a3cc0b38f42c3d652eaa4f3f75b67dd0cef3b4eb5a1676b0e717a8', bytes: 244417, note: 't22 UI grouping: the notification block is its own group, last on the page' },
+  'lib/client.js': { sha256: '6a7905cddf909faabaf93c993c66a8d20007e5437e3285dadaeb5ad26ce3cf1a', bytes: 258008, note: 't22 UI grouping: the notification block is its own group, last on the page' },
   'lib/native-toast.js': { sha256: '6534b167056871e0eb00e5e1a66f9eff41f3cde0ebedf1529f7b6579454821bb', bytes: 29555, note: 't14 write path: unique temp + link publish' },
   'lib/native-bridge.js': { sha256: 'b0fe419db341d2dbc16d6c4666c88c094481da3a35a1c05e974b32dabed00264', bytes: 27123, note: 't14 EEXIST -> 409' },
   'lib/index.js': { sha256: '066be96ef0e5c1e78d57e4ef55369fdb20b0550d17c0a238b413112eacf86a31', bytes: 55458, note: 't6 host half' },
@@ -666,7 +668,7 @@ report.check(
 const clientAnchor = anchorRows.find((row) => row.relative === 'lib/client.js');
 report.check(
   'lib/client.js is the rev-29 byte image of this round (the trigger source), not an older one',
-  clientAnchor?.actual === '276d9da484a3cc0b38f42c3d652eaa4f3f75b67dd0cef3b4eb5a1676b0e717a8' && clientAnchor?.actualBytes === 244417,
+  clientAnchor?.actual === '6a7905cddf909faabaf93c993c66a8d20007e5437e3285dadaeb5ad26ce3cf1a' && clientAnchor?.actualBytes === 258008,
   `${clientAnchor?.actual} / ${String(clientAnchor?.actualBytes)} B`,
 );
 

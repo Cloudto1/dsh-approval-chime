@@ -424,7 +424,7 @@ function Get-FailedAssertions {
 # added it to the run list). Re-anchoring this table is the ONLY edit a future revision should need
 # here (plus the two anchors in section 0c).
 $frozenManifest = @(
-  @{ path = 'lib\client.js';                bytes = 244417; sha = '276D9DA484A3CC0B38F42C3D652EAA4F3F75B67DD0CEF3B4EB5A1676B0E717A8' },
+  @{ path = 'lib\client.js';                bytes = 258008; sha = '6A7905CDDF909FAABAF93C993C66A8D20007E5437E3285DADAEB5AD26CE3CF1A' },
   @{ path = 'lib\index.js';                 bytes = 55458;  sha = '066BE96EF0E5C1E78D57E4EF55369FDB20B0550D17C0A238B413112EACF86A31' },
   @{ path = 'lib\native-toast.js';          bytes = 29555;  sha = '6534B167056871E0EB00E5E1A66F9EFF41F3CDE0EBEDF1529F7B6579454821BB' },
   @{ path = 'lib\native-bridge.js';         bytes = 27123;  sha = 'B0FE419DB341D2DBC16D6C4666C88C094481DA3A35A1C05E974B32DABED00264' },
@@ -474,7 +474,21 @@ $probes = @(
   # exactly how r30's deploy batch managed to move four pinned files without anyone noticing. This
   # probe re-derives probe-21's eleven byte anchors from the disk every run, so a pinned file that
   # moved without its row being re-anchored turns THIS run red.
-  'probe-24-anchor-drift.mjs'
+  'probe-24-anchor-drift.mjs',
+  # r30 tail: the notification TEST button -- ONE raise path ({test:true}), the three test guards
+  # (nativeDeliver / nativeSettleRevoked / nativeSweep), the frozen route and body untouched, and a
+  # window-write count that catches a quota refill hidden in the switch handler (verify12 P1);
+  # 28 checks, 19 declared mutants — --mutant=all is run by hand, not here, and catches all 19
+  # exactly as declared (exit 0).
+  'probe-25-toast-test-button.mjs',
+  # r30 tail: the test button's flood control, EXECUTED rather than grepped -- the real
+  # lib/client.js runs in the suite's vm sandbox under a fake clock; 22 measured checks.
+  # A7c drives a pending-snapshot sync while the window is full: the verify11 gap
+  # (M4-sweep-resets-the-window) stays invisible without it.
+  # B1 drives the RENDERED role="switch" checkbox of the nativeToast row through its own onChange
+  # and B1c the settings scope, because a scope write alone never runs the component handler body,
+  # which is where verify12's mutant c hid its quota refill.
+  'probe-26-flood-exec.mjs'
 )
 # Probes from rev-1 ... rev-3, kept for the record.
 $legacyProbes = @(
@@ -641,7 +655,7 @@ Write-Host ''
 Write-Host '=== 0c. the revision anchors this run asserts against, and the doc drift note ==='
 Write-Host 'rev-25 changed lib/client.js, lib/index.js, verify/ and added lib/native-toast.js + lib/native-bridge.js: both anchors below are re-pinned to the rev-25 bytes.'
 foreach ($row in @(
-    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 244417; sha = '276D9DA484A3CC0B38F42C3D652EAA4F3F75B67DD0CEF3B4EB5A1676B0E717A8' },
+    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 258008; sha = '6A7905CDDF909FAABAF93C993C66A8D20007E5437E3285DADAEB5AD26CE3CF1A' },
     @{ path = (Join-Path $plugin 'lib\index.js'); bytes = 55458;  sha = '066BE96EF0E5C1E78D57E4EF55369FDB20B0550D17C0A238B413112EACF86A31' })) {
   $item = Get-Item $row.path
   $hash = (Get-FileHash $row.path -Algorithm SHA256).Hash

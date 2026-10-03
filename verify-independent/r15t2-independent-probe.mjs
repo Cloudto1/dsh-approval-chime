@@ -56,8 +56,8 @@ const RAW_DIR = join(HERE, '_raw');
 
 /** The frozen rev-29 bytes this probe is anchored to (t7 close-out; re-anchored by the 2026-10 rebuild). */
 const FROZEN = {
-  sha256: '276D9DA484A3CC0B38F42C3D652EAA4F3F75B67DD0CEF3B4EB5A1676B0E717A8',
-  bytes: 244417,
+  sha256: '6A7905CDDF909FAABAF93C993C66A8D20007E5437E3285DADAEB5AD26CE3CF1A',
+  bytes: 258008,
   revision: 'rev-29 · the desktop runtime and the bound pending hook are observable (the foreground rule is unchanged)',
 };
 

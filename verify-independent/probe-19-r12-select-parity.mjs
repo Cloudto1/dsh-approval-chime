@@ -62,16 +62,17 @@ const HOST_PATH = join(PLUGIN, 'lib', 'index.js');
  * 142330 B 不符（sha256 与任务书一致）。哈希是权威值，行 0 会把这件事故意摆出来。
  *
  * r30 更正（只改注释里的数字，不改任何断言）：下面 FROZEN 块自 rev-12 起被重锚过多次
- * （t11 → t22 → rev-26 → rev-27 → rev-29 → r30），它现在钉的是 **244417 B / `276D9DA4…`**，
- * 早已不是 142330 B。链路上的实测值见 `probe-21-native-toast.mjs` 的 Movement 注释与
+ * （t11 → t22 → rev-26 → rev-27 → rev-29 → r30），它现在钉的是**表里那一行**（本行不再重复写死，
+ * 免得又过期）；链路上的实测值见 `probe-21-native-toast.mjs` 的 Movement 注释与
  * `.scratch/audit-r30/fix-report-3.md`（rev-29 `63FB447D…`/240875 → r30 t10
- * `D13FFECA…`/244105 → r30 t13 `276D9DA4…`/244417）。
+ * `D13FFECA…`/244105 → r30 t13 `276D9DA4…`/244417 → 上一轮尾轮（通知测试按钮）
+ * `F1B3B3B6…`/253603 → 本轮尾轮（防洪控制 + 开关复位修复）**`6A7905CD…`/258008**）。
  * **以 FROZEN 块为准，本节只是历史。**
  */
 const FROZEN = {
   client: {
-    bytes: 244417,
-    sha256: '276D9DA484A3CC0B38F42C3D652EAA4F3F75B67DD0CEF3B4EB5A1676B0E717A8',
+    bytes: 258008,
+    sha256: '6A7905CDDF909FAABAF93C993C66A8D20007E5437E3285DADAEB5AD26CE3CF1A',
   },
   host: {
     bytes: 55458,
