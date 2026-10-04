@@ -743,11 +743,11 @@ report.group('0. the bytes under test are the shipped ones');
 report.note('file', CLIENT_PATH);
 report.note('bytes', CLIENT_BYTES);
 report.note('sha256', CLIENT_SHA256);
-report.same('lib/client.js byte count is what rev-29 claims', CLIENT_BYTES, 258008);
+report.same('lib/client.js byte count is what rev-29 claims', CLIENT_BYTES, 267281);
 report.same(
   'lib/client.js sha256 is what rev-29 claims',
   CLIENT_SHA256,
-  '6A7905CDDF909FAABAF93C993C66A8D20007E5437E3285DADAEB5AD26CE3CF1A',
+  'E0C95DCE8C41787B5C569F0F1ACDCE3C2884DA7E730F260ED02FD6000040F31F',
 );
 report.same('lib/client.js has no top-level import/export (it is a classic script)', /^import |^export /m.test(CLIENT_SOURCE), false);
 

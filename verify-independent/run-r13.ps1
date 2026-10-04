@@ -424,7 +424,7 @@ function Get-FailedAssertions {
 # added it to the run list). Re-anchoring this table is the ONLY edit a future revision should need
 # here (plus the two anchors in section 0c).
 $frozenManifest = @(
-  @{ path = 'lib\client.js';                bytes = 258008; sha = '6A7905CDDF909FAABAF93C993C66A8D20007E5437E3285DADAEB5AD26CE3CF1A' },
+  @{ path = 'lib\client.js';                bytes = 267281; sha = 'E0C95DCE8C41787B5C569F0F1ACDCE3C2884DA7E730F260ED02FD6000040F31F' },
   @{ path = 'lib\index.js';                 bytes = 55458;  sha = '066BE96EF0E5C1E78D57E4EF55369FDB20B0550D17C0A238B413112EACF86A31' },
   @{ path = 'lib\native-toast.js';          bytes = 29555;  sha = '6534B167056871E0EB00E5E1A66F9EFF41F3CDE0EBEDF1529F7B6579454821BB' },
   @{ path = 'lib\native-bridge.js';         bytes = 27123;  sha = 'B0FE419DB341D2DBC16D6C4666C88C094481DA3A35A1C05E974B32DABED00264' },
@@ -475,19 +475,34 @@ $probes = @(
   # probe re-derives probe-21's eleven byte anchors from the disk every run, so a pinned file that
   # moved without its row being re-anchored turns THIS run red.
   'probe-24-anchor-drift.mjs',
-  # r30 tail: the notification TEST button -- ONE raise path ({test:true}), the three test guards
-  # (nativeDeliver / nativeSettleRevoked / nativeSweep), the frozen route and body untouched, and a
-  # window-write count that catches a quota refill hidden in the switch handler (verify12 P1);
-  # 28 checks, 19 declared mutants — --mutant=all is run by hand, not here, and catches all 19
-  # exactly as declared (exit 0).
+  # r30 tail / r30 fix-14: the notification TEST button -- ONE raise path ({test:true}), the three test
+  # guards (nativeDeliver / nativeSettleRevoked / nativeSweep), the frozen route and body untouched, and
+  # a cooldown-write count that catches a rate-control refill hidden in the switch handler (verify12 P1);
+  # 32 checks, 31 declared mutants — --mutant=all is run by hand, not here, and catches all 31 exactly
+  # as declared (exit 0). fix-14 deleted the rolling-window quota: the ONLY rate control is the 3 s
+  # cooldown (that round left this file at 30 checks / 28 mutants); fix-15 (r30 R1/R3) took it to the
+  # 32/31 counted here: `nativeTeardown` must REVOKE the live test tokens before forgetting them (the
+  # switch-OFF path that left test toasts stacked on the desktop), and the repaint period must be
+  # exactly 1000 ms BY VALUE (its 1000->100 mutant was invisible to both probes). r30 fix-16 edits
+  # lib/client.js only — no check and no mutant of THIS file moved, so the 32/31 above still stands.
   'probe-25-toast-test-button.mjs',
-  # r30 tail: the test button's flood control, EXECUTED rather than grepped -- the real
-  # lib/client.js runs in the suite's vm sandbox under a fake clock; 22 measured checks.
-  # A7c drives a pending-snapshot sync while the window is full: the verify11 gap
-  # (M4-sweep-resets-the-window) stays invisible without it.
+  # r30 tail / r30 fix-14: the test button's flood control, EXECUTED rather than grepped -- the real
+  # lib/client.js runs in the suite's vm sandbox under a fake clock; 43 measured checks (35 as
+  # fix-14 left it, 41 after fix-15, 43 after fix-16 added F1/F2).
+  # A6 measures the deletion behaviourally (clicks every 3 s raise every time, no rolling ceiling);
+  # A7c drives a pending-snapshot sync inside the cooldown: the verify11 gap
+  # (a sweep that resets the rate control) stays invisible without it.
   # B1 drives the RENDERED role="switch" checkbox of the nativeToast row through its own onChange
   # and B1c the settings scope, because a scope write alone never runs the component handler body,
-  # which is where verify12's mutant c hid its quota refill.
+  # which is where verify12's mutant c hid its refill.
+  # fix-15 (r30 R1): 41 measured checks. D8/D9 flip that same rendered role="switch" control OFF and ON
+  # with a real approval notification present throughout and read the SCREEN -- the user's defect (switch
+  # OFF/ON, then click: TWO test notifications, five cycles stacking five, zero revokes) is on the switch,
+  # and no request-counting check can see it.
+  # fix-16 (the verify15 round's S2/m13 coverage gap + its S3): F1 clicks the button and flips that same
+  # control OFF in the SAME tick (the raise still unanswered, the record still `raising`), and F2 reads
+  # the plugin's own diagnostics snapshot — the m13 mutant that left this probe 41/41 green now reddens
+  # F1+F2 and nothing else (41/43).
   'probe-26-flood-exec.mjs'
 )
 # Probes from rev-1 ... rev-3, kept for the record.
@@ -655,7 +670,7 @@ Write-Host ''
 Write-Host '=== 0c. the revision anchors this run asserts against, and the doc drift note ==='
 Write-Host 'rev-25 changed lib/client.js, lib/index.js, verify/ and added lib/native-toast.js + lib/native-bridge.js: both anchors below are re-pinned to the rev-25 bytes.'
 foreach ($row in @(
-    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 258008; sha = '6A7905CDDF909FAABAF93C993C66A8D20007E5437E3285DADAEB5AD26CE3CF1A' },
+    @{ path = (Join-Path $plugin 'lib\client.js'); bytes = 267281; sha = 'E0C95DCE8C41787B5C569F0F1ACDCE3C2884DA7E730F260ED02FD6000040F31F' },
     @{ path = (Join-Path $plugin 'lib\index.js'); bytes = 55458;  sha = '066BE96EF0E5C1E78D57E4EF55369FDB20B0550D17C0A238B413112EACF86A31' })) {
   $item = Get-Item $row.path
   $hash = (Get-FileHash $row.path -Algorithm SHA256).Hash
