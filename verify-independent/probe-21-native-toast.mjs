@@ -145,6 +145,8 @@ const hashFile = (relative) => createHash('sha256').update(readFileSync(join(PLU
  * `selftest.ps1` `A5672083…`/12473 → **`F681293C…`/12470**;
  * `activate.vbs` `8EE7DD9A…`/1985 → **`474DA965…`/2639**.
  *
+ * r30 docs round (fix-17): the CONTRACT-PAGE row was re-anchored to `59F92455…`/67567
+ * after `docs/native-toast-接口冻结.md` gained its §17 note (the test button; the contract itself is unchanged).
  * These 11 rows are RE-DERIVED ON EVERY CANONICAL RUN by `probe-24-anchor-drift.mjs`, so a future
  * edit to one of these files turns the run red until its row is re-anchored here. This probe itself
  * stays OUT of the run on purpose (it needs `_raw` records no clone has, plus a live notification
@@ -165,7 +167,7 @@ const REVISION_ANCHORS = {
   'deploy/native-toast/raise.ps1': { sha256: '90ee71c794ab98191269ec8a7bb8b96fc957adc4261bfa097474daf46baecc68', bytes: 2808, note: 't6 deploy' },
   'deploy/native-toast/answer.ps1': { sha256: '07487cd36ea419cefb8d36b9c05f8732dcfb2390ffa1603ac449f320bd9c7006', bytes: 2990, note: 't6 deploy' },
   'deploy/native-toast/activate.vbs': { sha256: '474da9653fd3dd7984cc2572e2de113b29ee73d63b854faf4c32e54e044d2679', bytes: 2639, note: 't9 F5 whitelist + r30 (T4-F11): the interpreter comes from %SystemRoot% (the hidden-window flag is unchanged)' },
-  'docs/native-toast-接口冻结.md': { sha256: '7c50d945f717e76b7a37af3f46e831f29e902bda5f7f4ccc1b2d34d6997b4e8e', bytes: 64450, note: 't14 contract revisions + t4 §16 append (200-char cap, A9 pointer, H1 ruling) + r30: the §3.1 example stops hard-coding the interpreter path' },
+  'docs/native-toast-接口冻结.md': { sha256: '59f92455911e35d371286c5b8475ee960b81c1e0b93dfd0b2fb86e9ba6553b4f', bytes: 67567, note: 't14 contract revisions + t4 §16 append (200-char cap, A9 pointer, H1 ruling) + r30: the §3.1 example stops hard-coding the interpreter path + r30 docs round: §17 records the test button (the contract itself is unchanged)' },
 };
 const hashesAtStart = Object.fromEntries(WATCHED_FILES.map((relative) => [relative, hashFile(relative)]));
 
