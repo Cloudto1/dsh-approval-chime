@@ -434,7 +434,7 @@ $frozenManifest = @(
   @{ path = 'verify\host-half.test.mjs';    bytes = 33969;  sha = 'F3FD189914A03CC7D83BF5723C2A61543165BDAD0492D2537881B5F5DFE834DD' },
   @{ path = 'verify\native-toast.test.mjs'; bytes = 90281;  sha = '828281D1A7AB708F1E8BB05EC96A91845BD06B56F55DB7A5315FC721357A8618' },
   @{ path = 'verify\waterfall.test.mjs';    bytes = 8888;   sha = '010811A5D233C70B058198056BC73B1A9DE1B17560E8A76626F0FE6D4BD6EFC9' },
-  @{ path = 'package.json';                 bytes = 772;    sha = '0BEC8DABE616A62D8EB2B0E9718B28F049AEA29C0FBB4A8F68B7317C47FEA864' },
+  @{ path = 'package.json';                 bytes = 856;    sha = 'A0086C2E7B5093976D36176B1E0E563D8C68A3D9FEBCD22C579715D9EF308882' },
   @{ path = 'cordis.patch.yml';             bytes = 1043;   sha = '6F39C860C7531815A41DFEBEFC8775FAA1CC22062790B4A214CADCF64B4DFF9A' },
   @{ path = 'verify\settings-model.test.mjs'; bytes = 10967; sha = '680314D080F3700BDF6D7375387FF6F0117E99A1CD7E5B07664D0B4EABEFAE78' }
 )
